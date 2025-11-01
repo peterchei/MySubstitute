@@ -64,6 +64,11 @@ public:
      */
     std::string GetStatusString() const;
     
+    /**
+     * Verify that the virtual camera is properly registered in the system
+     */
+    bool VerifyRegistration() const;
+    
 private:
     /**
      * Initialize COM and DirectShow components

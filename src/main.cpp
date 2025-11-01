@@ -212,6 +212,31 @@ void OnHidePreview() {
 }
 
 void OnStartCamera() {
+    // Reinitialize camera if it was released
+    if (!g_camera) {
+        std::cout << "[Main] Reinitializing camera after release..." << std::endl;
+        
+        g_camera = CameraCapture::Create();
+        if (!g_camera || !g_camera->Initialize()) {
+            MessageBoxA(nullptr, 
+                "Failed to reinitialize camera.\n\n"
+                "Make sure no other applications are using the camera.",
+                "Camera Initialization Error", MB_OK | MB_ICONERROR);
+            return;
+        }
+        
+        // Set up camera callback
+        g_camera->SetFrameCallback(OnCameraFrame);
+        
+        // Select first available camera by default
+        auto cameras = g_camera->GetAvailableCameras();
+        if (!cameras.empty()) {
+            g_camera->SelectCamera(cameras[0].id);
+        }
+        
+        std::cout << "[Main] ✓ Camera reinitialized successfully" << std::endl;
+    }
+    
     if (g_camera) {
         if (g_camera->StartCapture()) {
             g_cameraActive = true;
@@ -222,8 +247,16 @@ void OnStartCamera() {
             if (g_previewManager && !g_previewManager->IsVisible()) {
                 g_previewManager->ShowPreview();
             }
+            
+            std::cout << "[Main] ✓ Camera capture started successfully" << std::endl;
         } else {
-            MessageBoxA(nullptr, "Failed to start camera capture", "Camera Error", MB_OK | MB_ICONERROR);
+            MessageBoxA(nullptr, 
+                "Failed to start camera capture.\n\n"
+                "Possible causes:\n"
+                "• Camera is being used by another application\n"
+                "• Camera drivers are not properly installed\n"
+                "• Camera is physically disconnected", 
+                "Camera Error", MB_OK | MB_ICONERROR);
         }
     }
 }
@@ -246,8 +279,16 @@ void OnStopCamera() {
 
 void OnReleaseCamera() {
     if (g_camera) {
+        std::cout << "[Main] Releasing camera for other applications..." << std::endl;
+        
         g_camera->StopCapture();
         g_cameraActive = false;
+        
+        // Completely reset the camera object to ensure full release
+        g_camera.reset();
+        g_camera = nullptr;
+        
+        std::cout << "[Main] ✓ Camera object destroyed and released" << std::endl;
         
         if (g_trayManager) {
             g_trayManager->UpdateTooltip(L"MySubstitute - Camera Released for Other Apps");
@@ -265,13 +306,25 @@ void OnReleaseCamera() {
             g_lastProcessedFrame = Frame();
         }
         
-        MessageBoxA(nullptr, 
-            "Camera has been released!\n\n"
-            "You can now use Microsoft Camera app or other applications.\n"
-            "To use MySubstitute again, right-click the tray icon and select 'Start Camera'.",
-            "Camera Released", MB_OK | MB_ICONINFORMATION);
+        // Wait a moment to ensure complete cleanup
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         
-        std::cout << "Camera released for other applications to use" << std::endl;
+        MessageBoxA(nullptr, 
+            "✅ Camera Completely Released!\n\n"
+            "Microsoft Camera and other applications can now use your camera.\n\n"
+            "To restart MySubstitute camera:\n"
+            "• Right-click tray icon → 'Start Camera'\n"
+            "• Camera will be reinitialized from scratch",
+            "Camera Released Successfully", MB_OK | MB_ICONINFORMATION);
+        
+        std::cout << "[Main] ✓ Camera fully released - other apps can now access it" << std::endl;
+    } else {
+        MessageBoxA(nullptr, 
+            "Camera is not currently active in MySubstitute.\n\n"
+            "If other apps still can't access the camera, try:\n"
+            "• Restarting those applications\n"
+            "• Checking if other software is using the camera",
+            "Camera Not Active", MB_OK | MB_ICONINFORMATION);
     }
 }
 
@@ -286,21 +339,42 @@ void OnRegisterVirtualCamera() {
             
             MessageBoxA(nullptr,
                 "🎉 Virtual Camera Registered Successfully!\n\n"
-                "MySubstitute Virtual Camera is now available in:\n"
-                "• Camera app\n"
-                "• Zoom, Teams, Discord\n"
-                "• Chrome, Edge browsers\n"
-                "• Any application that uses cameras\n\n"
-                "Start the virtual camera to begin streaming AI-processed video.",
+                "✅ MySubstitute Virtual Camera is now visible to:\n"
+                "   • Windows Camera app\n"
+                "   • Zoom, Teams, Discord, Skype\n"
+                "   • Chrome, Edge, Firefox browsers\n"
+                "   • OBS, XSplit, streaming software\n\n"
+                "📋 Next steps:\n"
+                "   1. Right-click → 'Start Virtual Camera'\n"
+                "   2. Open Camera app or Zoom\n"
+                "   3. Select 'MySubstitute Virtual Camera'\n"
+                "   4. Enjoy AI-processed video!",
                 "Virtual Camera Ready!", MB_OK | MB_ICONINFORMATION);
         } else {
-            MessageBoxA(nullptr,
-                "❌ Failed to Register Virtual Camera\n\n"
-                "Please make sure:\n"
-                "• You're running as Administrator\n"
-                "• No antivirus software is blocking the registration\n"
-                "• Try right-clicking MySubstitute and 'Run as Administrator'",
-                "Registration Failed", MB_OK | MB_ICONERROR);
+            // Check if verification failed vs registration failed
+            if (g_virtualCameraManager->IsRegistered()) {
+                MessageBoxA(nullptr,
+                    "⚠️ Registration Partially Complete\n\n"
+                    "Registry entries were created but virtual camera is not yet visible.\n\n"
+                    "Try these solutions:\n"
+                    "• Close and reopen camera applications\n"
+                    "• Restart MySubstitute as Administrator\n"
+                    "• Reboot your computer if the problem persists\n\n"
+                    "Check the console output for more details.",
+                    "Registration Warning", MB_OK | MB_ICONWARNING);
+            } else {
+                MessageBoxA(nullptr,
+                    "❌ Failed to Register Virtual Camera\n\n"
+                    "Common causes:\n"
+                    "• Not running as Administrator (most common)\n"
+                    "• Antivirus software blocking COM registration\n"
+                    "• Windows permissions issue\n\n"
+                    "Solutions:\n"
+                    "• Right-click MySubstitute → 'Run as Administrator'\n"
+                    "• Temporarily disable antivirus during registration\n"
+                    "• Check Windows Event Log for detailed errors",
+                    "Registration Failed", MB_OK | MB_ICONERROR);
+            }
         }
     }
 }

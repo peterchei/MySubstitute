@@ -306,15 +306,23 @@ void DirectShowCameraCapture::StopCapture() {
         return;
     }
 
+    std::cout << "[Camera] Stopping camera capture..." << std::endl;
     m_shouldCapture = false;
     
     if (m_captureThread.joinable()) {
         m_captureThread.join();
+        std::cout << "[Camera] Capture thread stopped" << std::endl;
     }
 
 #ifdef HAVE_OPENCV
     if (m_openCVCapture.isOpened()) {
+        std::cout << "[Camera] Releasing OpenCV VideoCapture..." << std::endl;
         m_openCVCapture.release();
+        
+        // Force cleanup and wait for system to release camera
+        cv::destroyAllWindows();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::cout << "[Camera] ✓ Camera released completely" << std::endl;
     }
 #endif
 

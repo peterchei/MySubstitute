@@ -1,7 +1,11 @@
 #include "virtual_camera_manager.h"
 #include <iostream>
 #include <sstream>
+#include <thread>
+#include <chrono>
 #include <comdef.h>
+#include <dshow.h>
+#include <strmif.h>
 
 VirtualCameraManager::VirtualCameraManager() :
     m_isRegistered(false),
@@ -27,14 +31,30 @@ VirtualCameraManager::~VirtualCameraManager()
 
 bool VirtualCameraManager::RegisterVirtualCamera()
 {
+    if (m_isRegistered) {
+        std::cout << "[VirtualCamera] Virtual camera already registered" << std::endl;
+        return VerifyRegistration();
+    }
+    
     std::cout << "[VirtualCamera] Attempting to register virtual camera..." << std::endl;
     
     HRESULT hr = DllRegisterServer();
     if (SUCCEEDED(hr)) {
-        m_isRegistered = true;
-        std::cout << "[VirtualCamera] ✓ Virtual camera registered successfully!" << std::endl;
-        std::cout << "[VirtualCamera] ✓ MySubstitute should now appear in camera lists" << std::endl;
-        return true;
+        std::cout << "[VirtualCamera] Registry entries created successfully" << std::endl;
+        
+        // Wait a moment for system to process registration
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        
+        // Verify registration worked
+        if (VerifyRegistration()) {
+            m_isRegistered = true;
+            std::cout << "[VirtualCamera] ✅ Virtual camera registered and verified!" << std::endl;
+            std::cout << "[VirtualCamera] ✅ MySubstitute Virtual Camera is now available to applications" << std::endl;
+            return true;
+        } else {
+            std::cout << "[VirtualCamera] ⚠️ Registry updated but device not visible - may need system restart" << std::endl;
+            return false;
+        }
     } else {
         _com_error err(hr);
         std::wcout << L"[VirtualCamera] ✗ Registration failed: " << err.ErrorMessage() << std::endl;
@@ -137,6 +157,63 @@ bool VirtualCameraManager::InitializeCOM()
     
     std::cout << "[VirtualCamera] ✓ COM initialized" << std::endl;
     return true;
+}
+
+bool VirtualCameraManager::VerifyRegistration() const
+{
+    HRESULT hr;
+    ICreateDevEnum* pDevEnum = nullptr;
+    IEnumMoniker* pEnum = nullptr;
+    IMoniker* pMoniker = nullptr;
+    bool found = false;
+    
+    std::cout << "[VirtualCamera] Verifying virtual camera registration..." << std::endl;
+    
+    // Create device enumerator
+    hr = CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER,
+                         IID_ICreateDevEnum, (void**)&pDevEnum);
+    if (FAILED(hr)) {
+        std::cout << "[VirtualCamera] ✗ Failed to create device enumerator" << std::endl;
+        return false;
+    }
+    
+    // Enumerate video capture devices
+    hr = pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pEnum, 0);
+    if (hr == S_OK) {
+        ULONG cFetched;
+        while (pEnum->Next(1, &pMoniker, &cFetched) == S_OK) {
+            IPropertyBag* pPropBag;
+            hr = pMoniker->BindToStorage(0, 0, IID_IPropertyBag, (void**)&pPropBag);
+            if (SUCCEEDED(hr)) {
+                VARIANT var;
+                VariantInit(&var);
+                hr = pPropBag->Read(L"FriendlyName", &var, 0);
+                if (SUCCEEDED(hr)) {
+                    std::wcout << L"[VirtualCamera] Found device: " << var.bstrVal << std::endl;
+                    if (wcscmp(var.bstrVal, L"MySubstitute Virtual Camera") == 0) {
+                        found = true;
+                        std::cout << "[VirtualCamera] ✓ MySubstitute Virtual Camera found in system!" << std::endl;
+                        VariantClear(&var);
+                        pPropBag->Release();
+                        pMoniker->Release();
+                        break;
+                    }
+                    VariantClear(&var);
+                }
+                pPropBag->Release();
+            }
+            pMoniker->Release();
+        }
+    }
+    
+    if (pEnum) pEnum->Release();
+    if (pDevEnum) pDevEnum->Release();
+    
+    if (!found) {
+        std::cout << "[VirtualCamera] ✗ MySubstitute Virtual Camera not found in system device list" << std::endl;
+    }
+    
+    return found;
 }
 
 void VirtualCameraManager::CleanupCOM()
