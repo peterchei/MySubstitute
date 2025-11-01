@@ -1,6 +1,15 @@
 #include "virtual_camera_filter.h"
 #include "../capture/frame.h"
 #include <iostream>
+#include <windows.h>
+#include <dshow.h>
+#include <atlbase.h>
+#include <comdef.h>
+
+// DirectShow virtual camera implementation
+#pragma comment(lib, "strmiids.lib")
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "oleaut32.lib")
 
 VirtualCameraFilter::VirtualCameraFilter() 
     : m_initialized(false), m_registered(false), m_running(false) {
@@ -17,8 +26,13 @@ bool VirtualCameraFilter::Initialize() {
         return true;
     }
     
-    // For now, just mark as initialized
-    // Full DirectShow implementation will be added later
+    // Initialize COM for DirectShow operations
+    HRESULT hr = CoInitialize(nullptr);
+    if (FAILED(hr)) {
+        std::cerr << "Failed to initialize COM for virtual camera" << std::endl;
+        return false;
+    }
+    
     std::cout << "Initializing virtual camera filter: " << m_deviceName << std::endl;
     
     m_initialized = true;

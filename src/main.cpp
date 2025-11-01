@@ -17,6 +17,7 @@
 std::unique_ptr<SystemTrayManager> g_trayManager;
 std::unique_ptr<CameraCapture> g_camera;
 std::unique_ptr<PassthroughProcessor> g_processor;
+std::unique_ptr<VirtualCameraFilter> g_virtualCamera;
 std::unique_ptr<PreviewWindowManager> g_previewManager;
 bool g_running = true;
 Frame g_lastProcessedFrame;  // Store the latest processed frame for preview
@@ -130,6 +131,25 @@ bool InitializeComponents() {
             return false;
         }
 
+        // Initialize virtual camera
+        g_virtualCamera = std::make_unique<VirtualCameraFilter>();
+        if (!g_virtualCamera->Initialize()) {
+            std::cerr << "Failed to initialize virtual camera filter" << std::endl;
+            // Don't fail initialization - virtual camera is optional for now
+        } else {
+            // Register virtual camera with DirectShow
+            if (!g_virtualCamera->Register()) {
+                std::cerr << "Failed to register virtual camera filter" << std::endl;
+                // Don't fail initialization - virtual camera is optional for now
+            } else {
+                // Start virtual camera
+                if (!g_virtualCamera->Start()) {
+                    std::cerr << "Failed to start virtual camera" << std::endl;
+                    // Don't fail initialization - virtual camera is optional for now
+                }
+            }
+        }
+
         return true;
     } catch (const std::exception&) {
         return false;
@@ -145,6 +165,12 @@ void CleanupComponents() {
     if (g_trayManager) {
         g_trayManager->Cleanup();
         g_trayManager.reset();
+    }
+
+    if (g_virtualCamera) {
+        g_virtualCamera->Stop();
+        g_virtualCamera->Unregister();
+        g_virtualCamera.reset();
     }
 
     if (g_processor) {
@@ -296,5 +322,10 @@ void OnCameraFrame(const Frame& frame) {
         std::lock_guard<std::mutex> lock(g_frameMutex);
         g_lastCameraFrame = frame;
         g_lastProcessedFrame = processedFrame;
+    }
+    
+    // Send processed frame to virtual camera
+    if (g_virtualCamera && g_virtualCamera->IsRunning()) {
+        g_virtualCamera->UpdateFrame(processedFrame);
     }
 }
