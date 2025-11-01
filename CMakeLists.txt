@@ -70,6 +70,5 @@ endif()
 
 # Set target properties
 set_target_properties(MySubstitute PROPERTIES
-    WIN32_EXECUTABLE TRUE
     DEBUG_POSTFIX "_d"
 )

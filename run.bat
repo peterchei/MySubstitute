@@ -4,9 +4,15 @@ echo  Running MySubstitute Virtual Camera
 echo ====================================
 echo.
 
-REM Check if executable exists
-if not exist build\bin\Debug\MySubstitute.exe (
-    echo MySubstitute.exe not found!
+REM Check if executable exists (debug version first, then release)
+if exist build\bin\Debug\MySubstitute_d.exe (
+    set EXECUTABLE=build\bin\Debug\MySubstitute_d.exe
+    set BUILD_TYPE=Debug
+) else if exist build\bin\Release\MySubstitute.exe (
+    set EXECUTABLE=build\bin\Release\MySubstitute.exe
+    set BUILD_TYPE=Release
+) else (
+    echo MySubstitute executable not found!
     echo Please build the project first using: build.bat
     echo.
     pause
@@ -14,10 +20,9 @@ if not exist build\bin\Debug\MySubstitute.exe (
 )
 
 REM Run the application
-echo Starting MySubstitute...
+echo Starting MySubstitute (%BUILD_TYPE%)...
 echo.
-cd build\bin\Debug
-MySubstitute.exe
+%EXECUTABLE%
 
 echo.
 echo Application finished.

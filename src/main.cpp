@@ -1,9 +1,11 @@
 #include <iostream>
 #include <memory>
 #include <windows.h>
+#include <objbase.h>  // For CoInitialize/CoUninitialize
 
 #include "capture/camera_capture.h"
 #include "ai/ai_processor.h"
+#include "ai/passthrough_processor.h"  // For PassthroughProcessor
 #include "virtual_camera/virtual_camera_filter.h"
 #include "service/background_service.h"
 
