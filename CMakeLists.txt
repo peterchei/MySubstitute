@@ -41,7 +41,13 @@ set(SOURCES
     src/ai/passthrough_processor.cpp
     src/virtual_camera/virtual_camera_filter.cpp
     src/service/background_service.cpp
+    src/ui/system_tray_manager.cpp
 )
+
+# Resource files (optional, commented out for now)
+# set(RESOURCES
+#     src/resources.rc
+# )
 
 # Create executable
 add_executable(MySubstitute ${SOURCES})
@@ -65,10 +71,13 @@ if(WIN32)
         mfplat        # Media Foundation
         mf            # Media Foundation
         mfuuid        # Media Foundation UUIDs
+        user32        # Windows user interface
+        shell32       # Shell API (for system tray)
     )
 endif()
 
 # Set target properties
 set_target_properties(MySubstitute PROPERTIES
+    WIN32_EXECUTABLE TRUE
     DEBUG_POSTFIX "_d"
 )
