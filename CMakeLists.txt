@@ -32,6 +32,25 @@ if(HAVE_OPENCV)
     include_directories(${OpenCV_INCLUDE_DIRS})
 endif()
 
+# DirectShow base classes (usually in Windows SDK)
+if(WIN32)
+    # Try common DirectShow base class locations
+    set(DIRECTSHOW_BASE_PATHS
+        "C:/Program Files (x86)/Microsoft SDKs/Windows/v7.1A/Samples/multimedia/directshow/baseclasses"
+        "C:/Program Files/Microsoft SDKs/Windows/v7.1A/Samples/multimedia/directshow/baseclasses"
+        "C:/Program Files (x86)/Windows Kits/10/Samples/multimedia/directshow/baseclasses"
+        "$ENV{WindowsSdkDir}/Samples/multimedia/directshow/baseclasses"
+    )
+    
+    foreach(path ${DIRECTSHOW_BASE_PATHS})
+        if(EXISTS "${path}")
+            include_directories("${path}")
+            message(STATUS "Found DirectShow base classes at: ${path}")
+            break()
+        endif()
+    endforeach()
+endif()
+
 # Create a simple executable with all sources in one place
 set(SOURCES
     src/main.cpp
@@ -40,6 +59,7 @@ set(SOURCES
     src/ai/ai_processor.cpp
     src/ai/passthrough_processor.cpp
     src/virtual_camera/virtual_camera_filter.cpp
+    src/virtual_camera/directshow_source_filter.cpp
     src/service/background_service.cpp
     src/ui/system_tray_manager.cpp
     src/ui/preview_window_manager.cpp
@@ -74,6 +94,10 @@ if(WIN32)
         mfuuid        # Media Foundation UUIDs
         user32        # Windows user interface
         shell32       # Shell API (for system tray)
+        strmbase      # DirectShow base classes
+        quartz        # DirectShow quartz
+        gdi32         # GDI for drawing
+        gdiplus       # GDI+ for advanced drawing
     )
 endif()
 

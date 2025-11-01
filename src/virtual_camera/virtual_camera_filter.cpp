@@ -1,4 +1,5 @@
 #include "virtual_camera_filter.h"
+#include "directshow_source_filter.h"
 #include "../capture/frame.h"
 #include <iostream>
 #include <windows.h>
@@ -12,13 +13,19 @@
 #pragma comment(lib, "oleaut32.lib")
 
 VirtualCameraFilter::VirtualCameraFilter() 
-    : m_initialized(false), m_registered(false), m_running(false) {
+    : m_initialized(false), m_registered(false), m_running(false), m_pSourceFilter(nullptr) {
     m_deviceName = "MySubstitute Virtual Camera";
 }
 
 VirtualCameraFilter::~VirtualCameraFilter() {
     Stop();
     Unregister();
+    
+    // Release the source filter
+    if (m_pSourceFilter) {
+        delete m_pSourceFilter;
+        m_pSourceFilter = nullptr;
+    }
 }
 
 bool VirtualCameraFilter::Initialize() {
@@ -30,6 +37,21 @@ bool VirtualCameraFilter::Initialize() {
     HRESULT hr = CoInitialize(nullptr);
     if (FAILED(hr)) {
         std::cerr << "Failed to initialize COM for virtual camera" << std::endl;
+        return false;
+    }
+    
+    // Create simplified virtual camera filter instance
+    m_pSourceFilter = SimpleVirtualCameraFilter::CreateInstance();
+    
+    if (!m_pSourceFilter) {
+        std::cerr << "Failed to create virtual camera filter" << std::endl;
+        return false;
+    }
+    
+    if (!m_pSourceFilter->Initialize()) {
+        std::cerr << "Failed to initialize virtual camera filter" << std::endl;
+        delete m_pSourceFilter;
+        m_pSourceFilter = nullptr;
         return false;
     }
     
@@ -49,8 +71,13 @@ bool VirtualCameraFilter::Register() {
         return true;
     }
     
-    // TODO: Register DirectShow filter with Windows registry
-    std::cout << "Registering virtual camera filter (placeholder)" << std::endl;
+    // Register virtual camera with system
+    if (!m_pSourceFilter->Register()) {
+        std::cerr << "Failed to register virtual camera filter" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Registered virtual camera filter successfully" << std::endl;
     
     m_registered = true;
     return true;
@@ -63,8 +90,11 @@ void VirtualCameraFilter::Unregister() {
     
     Stop();
     
-    // TODO: Unregister DirectShow filter from Windows registry
-    std::cout << "Unregistering virtual camera filter (placeholder)" << std::endl;
+    // Unregister virtual camera filter
+    if (m_pSourceFilter) {
+        m_pSourceFilter->Unregister();
+        std::cout << "Unregistered virtual camera filter successfully" << std::endl;
+    }
     
     m_registered = false;
 }
@@ -79,7 +109,12 @@ bool VirtualCameraFilter::Start() {
         return true;
     }
     
-    // TODO: Start DirectShow filter and begin frame output
+    // Start virtual camera filter
+    if (!m_pSourceFilter->Start()) {
+        std::cerr << "Failed to start virtual camera filter" << std::endl;
+        return false;
+    }
+    
     std::cout << "Starting virtual camera: " << m_deviceName << std::endl;
     
     m_running = true;
@@ -91,7 +126,11 @@ void VirtualCameraFilter::Stop() {
         return;
     }
     
-    // TODO: Stop DirectShow filter
+    // Stop virtual camera filter
+    if (m_pSourceFilter) {
+        m_pSourceFilter->Stop();
+    }
+    
     std::cout << "Stopping virtual camera: " << m_deviceName << std::endl;
     
     m_running = false;
@@ -102,15 +141,12 @@ bool VirtualCameraFilter::IsRunning() const {
 }
 
 void VirtualCameraFilter::UpdateFrame(const Frame& frame) {
-    if (!m_running) {
+    if (!m_running || !m_pSourceFilter) {
         return;
     }
     
-    // TODO: Push frame to DirectShow filter output pin
-    if (frame.IsValid()) {
-        // For now, just acknowledge the frame update
-        // std::cout << "Frame updated: " << frame.width << "x" << frame.height << std::endl;
-    }
+    // Push frame to DirectShow filter
+    m_pSourceFilter->UpdateFrame(frame);
 }
 
 void VirtualCameraFilter::SetFrameSource(std::function<Frame()> callback) {

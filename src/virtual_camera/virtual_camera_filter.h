@@ -10,7 +10,13 @@ struct Frame;
 /**
  * Virtual camera filter interface for creating DirectShow virtual camera
  */
+// Forward declaration
+class SimpleVirtualCameraFilter;
+
 class VirtualCameraFilter {
+private:
+    SimpleVirtualCameraFilter* m_pSourceFilter;
+
 public:
     VirtualCameraFilter();
     virtual ~VirtualCameraFilter();
