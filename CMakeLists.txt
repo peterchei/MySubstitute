@@ -42,6 +42,7 @@ set(SOURCES
     src/virtual_camera/virtual_camera_filter.cpp
     src/service/background_service.cpp
     src/ui/system_tray_manager.cpp
+    src/ui/preview_window_manager.cpp
 )
 
 # Resource files (optional, commented out for now)

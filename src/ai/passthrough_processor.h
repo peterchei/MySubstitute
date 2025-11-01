@@ -3,8 +3,8 @@
 #include "ai_processor.h"
 
 /**
- * Simple passthrough processor that doesn't modify the frame
- * Useful for testing and as a template for other processors
+ * Passthrough processor with configurable overlay features
+ * Passes video through with optional caption, timestamp, and watermark overlays
  */
 class PassthroughProcessor : public AIProcessor {
 public:
@@ -22,7 +22,27 @@ public:
     std::map<std::string, std::string> GetParameters() const override;
     double GetExpectedProcessingTime() const override;
     
+    // Caption-specific methods
+    void SetCaptionText(const std::string& text);
+    void SetCaptionEnabled(bool enabled);
+    void SetCaptionPosition(int x, int y);  // Position from bottom-left
+    
 private:
+    // Overlay rendering methods
+    void AddTimestamp(cv::Mat& frame);
+    void AddWatermark(cv::Mat& frame);
+    void AddCaption(cv::Mat& frame);
+    
+    // Configuration
     bool m_addTimestamp;
     bool m_addWatermark;
+    bool m_addCaption;
+    
+    // Caption properties
+    std::string m_captionText;
+    int m_captionX;
+    int m_captionY;
+    cv::Scalar m_captionColor;
+    double m_captionScale;
+    int m_captionThickness;
 };

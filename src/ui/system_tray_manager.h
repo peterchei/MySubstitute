@@ -17,9 +17,10 @@ public:
     // Menu item IDs
     enum MenuItems {
         MENU_SHOW_STATUS = 1001,
-        MENU_SETTINGS = 1002,
-        MENU_SEPARATOR = 1003,
-        MENU_EXIT = 1004
+        MENU_SHOW_PREVIEW = 1002,
+        MENU_SETTINGS = 1003,
+        MENU_SEPARATOR = 1004,
+        MENU_EXIT = 1005
     };
 
     SystemTrayManager();
@@ -107,6 +108,7 @@ private:
     
     // Callback functions
     MenuCallback m_showStatusCallback;
+    MenuCallback m_showPreviewCallback;
     MenuCallback m_settingsCallback;
     MenuCallback m_exitCallback;
 };
