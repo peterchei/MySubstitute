@@ -20,9 +20,10 @@ public:
         MENU_SHOW_PREVIEW = 1002,
         MENU_START_CAMERA = 1003,
         MENU_STOP_CAMERA = 1004,
-        MENU_SETTINGS = 1005,
-        MENU_SEPARATOR = 1006,
-        MENU_EXIT = 1007
+        MENU_RELEASE_CAMERA = 1005,
+        MENU_SETTINGS = 1006,
+        MENU_SEPARATOR = 1007,
+        MENU_EXIT = 1008
     };
 
     SystemTrayManager();
@@ -113,6 +114,7 @@ private:
     MenuCallback m_showPreviewCallback;
     MenuCallback m_startCameraCallback;
     MenuCallback m_stopCameraCallback;
+    MenuCallback m_releaseCameraCallback;
     MenuCallback m_settingsCallback;
     MenuCallback m_exitCallback;
 };

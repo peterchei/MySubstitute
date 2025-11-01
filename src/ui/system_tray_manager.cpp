@@ -55,6 +55,7 @@ bool SystemTrayManager::Initialize(HINSTANCE hInstance, const std::wstring& wind
     AppendMenuW(m_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m_hMenu, MF_STRING, MENU_START_CAMERA, L"Start Camera");
     AppendMenuW(m_hMenu, MF_STRING, MENU_STOP_CAMERA, L"Stop Camera");
+    AppendMenuW(m_hMenu, MF_STRING, MENU_RELEASE_CAMERA, L"Release Camera for Other Apps");
     AppendMenuW(m_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m_hMenu, MF_STRING, MENU_SETTINGS, L"Settings");
     AppendMenuW(m_hMenu, MF_SEPARATOR, 0, nullptr);
@@ -114,6 +115,9 @@ void SystemTrayManager::SetMenuCallback(MenuItems menuId, MenuCallback callback)
             break;
         case MENU_STOP_CAMERA:
             m_stopCameraCallback = callback;
+            break;
+        case MENU_RELEASE_CAMERA:
+            m_releaseCameraCallback = callback;
             break;
         case MENU_SETTINGS:
             m_settingsCallback = callback;
@@ -236,6 +240,12 @@ void SystemTrayManager::HandleMenuCommand(UINT commandId) {
         case MENU_STOP_CAMERA:
             if (m_stopCameraCallback) {
                 m_stopCameraCallback();
+            }
+            break;
+
+        case MENU_RELEASE_CAMERA:
+            if (m_releaseCameraCallback) {
+                m_releaseCameraCallback();
             }
             break;
 

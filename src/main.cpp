@@ -34,6 +34,7 @@ void OnShowPreview();
 void OnHidePreview();
 void OnStartCamera();
 void OnStopCamera();
+void OnReleaseCamera();
 void OnExit();
 void ShowStatusMessage();
 Frame GetLatestProcessedFrame();  // Callback for preview window
@@ -68,6 +69,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_SHOW_PREVIEW, OnShowPreview);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_START_CAMERA, OnStartCamera);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_STOP_CAMERA, OnStopCamera);
+    g_trayManager->SetMenuCallback(SystemTrayManager::MENU_RELEASE_CAMERA, OnReleaseCamera);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_SETTINGS, OnSettings);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_EXIT, OnExit);
 
@@ -238,6 +240,37 @@ void OnStopCamera() {
             g_lastCameraFrame = Frame();
             g_lastProcessedFrame = Frame();
         }
+    }
+}
+
+void OnReleaseCamera() {
+    if (g_camera) {
+        g_camera->StopCapture();
+        g_cameraActive = false;
+        
+        if (g_trayManager) {
+            g_trayManager->UpdateTooltip(L"MySubstitute - Camera Released for Other Apps");
+        }
+        
+        // Hide preview window
+        if (g_previewManager) {
+            g_previewManager->HidePreview();
+        }
+        
+        // Clear frames
+        {
+            std::lock_guard<std::mutex> lock(g_frameMutex);
+            g_lastCameraFrame = Frame();
+            g_lastProcessedFrame = Frame();
+        }
+        
+        MessageBoxA(nullptr, 
+            "Camera has been released!\n\n"
+            "You can now use Microsoft Camera app or other applications.\n"
+            "To use MySubstitute again, right-click the tray icon and select 'Start Camera'.",
+            "Camera Released", MB_OK | MB_ICONINFORMATION);
+        
+        std::cout << "Camera released for other applications to use" << std::endl;
     }
 }
 
