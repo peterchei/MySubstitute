@@ -38,12 +38,15 @@ bool VirtualCameraManager::RegisterVirtualCamera()
     
     std::cout << "[VirtualCamera] Attempting to register virtual camera..." << std::endl;
     
-    HRESULT hr = DllRegisterServer();
-    if (SUCCEEDED(hr)) {
+    // Use the new registry-based approach
+    if (VirtualCameraRegistry::RegisterVirtualCamera()) {
         std::cout << "[VirtualCamera] Registry entries created successfully" << std::endl;
         
         // Wait a moment for system to process registration
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        
+        // List all devices for debugging
+        VirtualCameraRegistry::ListAllCameraDevices();
         
         // Verify registration worked
         if (VerifyRegistration()) {
@@ -52,12 +55,15 @@ bool VirtualCameraManager::RegisterVirtualCamera()
             std::cout << "[VirtualCamera] ✅ MySubstitute Virtual Camera is now available to applications" << std::endl;
             return true;
         } else {
-            std::cout << "[VirtualCamera] ⚠️ Registry updated but device not visible - may need system restart" << std::endl;
-            return false;
+            std::cout << "[VirtualCamera] ⚠️ Registry updated but device verification failed" << std::endl;
+            std::cout << "[VirtualCamera] 💡 Try restarting camera applications or rebooting system" << std::endl;
+            
+            // Mark as registered even if verification fails (registry was created)
+            m_isRegistered = VirtualCameraRegistry::IsVirtualCameraRegistered();
+            return m_isRegistered;
         }
     } else {
-        _com_error err(hr);
-        std::wcout << L"[VirtualCamera] ✗ Registration failed: " << err.ErrorMessage() << std::endl;
+        std::cout << "[VirtualCamera] ✗ Registry registration failed" << std::endl;
         std::cout << "[VirtualCamera] ✗ Make sure to run as Administrator" << std::endl;
         return false;
     }
@@ -67,14 +73,12 @@ bool VirtualCameraManager::UnregisterVirtualCamera()
 {
     std::cout << "[VirtualCamera] Unregistering virtual camera..." << std::endl;
     
-    HRESULT hr = DllUnregisterServer();
-    if (SUCCEEDED(hr)) {
+    if (VirtualCameraRegistry::UnregisterVirtualCamera()) {
         m_isRegistered = false;
         std::cout << "[VirtualCamera] ✓ Virtual camera unregistered successfully" << std::endl;
         return true;
     } else {
-        _com_error err(hr);
-        std::wcout << L"[VirtualCamera] ✗ Unregistration failed: " << err.ErrorMessage() << std::endl;
+        std::cout << "[VirtualCamera] ✗ Unregistration failed" << std::endl;
         return false;
     }
 }

@@ -1,0 +1,14 @@
+Windows Registry Editor Version 5.00
+
+; Remove MySubstitute Virtual Camera Registry Entries
+; Run this to unregister the virtual camera
+
+; Remove CLSID Registration
+[-HKEY_LOCAL_MACHINE\SOFTWARE\Classes\CLSID\{B3F3A1C4-8F9E-4A2D-9B5C-7E6F8D4C9A3B}]
+
+; Remove Video Input Device Category
+[-HKEY_LOCAL_MACHINE\SOFTWARE\Classes\CLSID\{860BB310-5D01-11D0-BD3B-00A0C911CE86}\Instance\{B3F3A1C4-8F9E-4A2D-9B5C-7E6F8D4C9A3B}]
+
+; Remove Current User entries
+[-HKEY_CURRENT_USER\SOFTWARE\Classes\CLSID\{B3F3A1C4-8F9E-4A2D-9B5C-7E6F8D4C9A3B}]
+[-HKEY_CURRENT_USER\SOFTWARE\Classes\CLSID\{860BB310-5D01-11D0-BD3B-00A0C911CE86}\Instance\{B3F3A1C4-8F9E-4A2D-9B5C-7E6F8D4C9A3B}]

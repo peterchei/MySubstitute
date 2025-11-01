@@ -2,6 +2,7 @@
 
 #include "virtual_camera_directshow.h"
 #include "class_factory.h"
+#include "virtual_camera_registry.h"
 #include "../capture/frame.h"
 #include <memory>
 #include <thread>
