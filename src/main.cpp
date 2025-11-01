@@ -10,6 +10,7 @@
 #include "ai/passthrough_processor.h"
 #include "virtual_camera/virtual_camera_filter.h"
 #include "virtual_camera/virtual_camera_manager.h"
+#include "virtual_camera/camera_diagnostics.h"
 #include "service/background_service.h"
 #include "ui/system_tray_manager.h"
 #include "ui/preview_window_manager.h"
@@ -20,6 +21,7 @@ std::unique_ptr<CameraCapture> g_camera;
 std::unique_ptr<PassthroughProcessor> g_processor;
 std::unique_ptr<VirtualCameraFilter> g_virtualCamera;
 std::unique_ptr<VirtualCameraManager> g_virtualCameraManager;
+// Removed complex virtual camera components - using diagnostics instead
 std::unique_ptr<PreviewWindowManager> g_previewManager;
 bool g_running = true;
 Frame g_lastProcessedFrame;  // Store the latest processed frame for preview
@@ -35,6 +37,7 @@ void OnSettings();
 void OnShowPreview();
 void OnHidePreview();
 void OnStartCamera();
+
 void OnStopCamera();
 void OnReleaseCamera();
 void OnRegisterVirtualCamera();
@@ -262,6 +265,8 @@ void OnStartCamera() {
 }
 
 void OnStopCamera() {
+    // Stop regular camera
+    
     if (g_camera) {
         g_camera->StopCapture();
         g_cameraActive = false;
@@ -329,54 +334,10 @@ void OnReleaseCamera() {
 }
 
 void OnRegisterVirtualCamera() {
-    if (g_virtualCameraManager) {
-        std::cout << "[Main] Registering virtual camera..." << std::endl;
-        
-        if (g_virtualCameraManager->RegisterVirtualCamera()) {
-            if (g_trayManager) {
-                g_trayManager->UpdateTooltip(L"MySubstitute - Virtual Camera Registered");
-            }
-            
-            MessageBoxA(nullptr,
-                "🎉 Virtual Camera Registered Successfully!\n\n"
-                "✅ MySubstitute Virtual Camera is now visible to:\n"
-                "   • Windows Camera app\n"
-                "   • Zoom, Teams, Discord, Skype\n"
-                "   • Chrome, Edge, Firefox browsers\n"
-                "   • OBS, XSplit, streaming software\n\n"
-                "📋 Next steps:\n"
-                "   1. Right-click → 'Start Virtual Camera'\n"
-                "   2. Open Camera app or Zoom\n"
-                "   3. Select 'MySubstitute Virtual Camera'\n"
-                "   4. Enjoy AI-processed video!",
-                "Virtual Camera Ready!", MB_OK | MB_ICONINFORMATION);
-        } else {
-            // Check if verification failed vs registration failed
-            if (g_virtualCameraManager->IsRegistered()) {
-                MessageBoxA(nullptr,
-                    "⚠️ Registration Partially Complete\n\n"
-                    "Registry entries were created but virtual camera is not yet visible.\n\n"
-                    "Try these solutions:\n"
-                    "• Close and reopen camera applications\n"
-                    "• Restart MySubstitute as Administrator\n"
-                    "• Reboot your computer if the problem persists\n\n"
-                    "Check the console output for more details.",
-                    "Registration Warning", MB_OK | MB_ICONWARNING);
-            } else {
-                MessageBoxA(nullptr,
-                    "❌ Failed to Register Virtual Camera\n\n"
-                    "Common causes:\n"
-                    "• Not running as Administrator (most common)\n"
-                    "• Antivirus software blocking COM registration\n"
-                    "• Windows permissions issue\n\n"
-                    "Solutions:\n"
-                    "• Right-click MySubstitute → 'Run as Administrator'\n"
-                    "• Temporarily disable antivirus during registration\n"
-                    "• Check Windows Event Log for detailed errors",
-                    "Registration Failed", MB_OK | MB_ICONERROR);
-            }
-        }
-    }
+    std::cout << "[Main] 🔍 Running camera diagnostics..." << std::endl;
+    
+    // Use the simple diagnostics system
+    CameraDiagnostics::ShowDiagnosticsResults();
 }
 
 void OnUnregisterVirtualCamera() {
