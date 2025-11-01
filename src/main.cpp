@@ -9,6 +9,7 @@
 #include "ai/ai_processor.h"
 #include "ai/passthrough_processor.h"
 #include "virtual_camera/virtual_camera_filter.h"
+#include "virtual_camera/virtual_camera_manager.h"
 #include "service/background_service.h"
 #include "ui/system_tray_manager.h"
 #include "ui/preview_window_manager.h"
@@ -18,6 +19,7 @@ std::unique_ptr<SystemTrayManager> g_trayManager;
 std::unique_ptr<CameraCapture> g_camera;
 std::unique_ptr<PassthroughProcessor> g_processor;
 std::unique_ptr<VirtualCameraFilter> g_virtualCamera;
+std::unique_ptr<VirtualCameraManager> g_virtualCameraManager;
 std::unique_ptr<PreviewWindowManager> g_previewManager;
 bool g_running = true;
 Frame g_lastProcessedFrame;  // Store the latest processed frame for preview
@@ -35,6 +37,10 @@ void OnHidePreview();
 void OnStartCamera();
 void OnStopCamera();
 void OnReleaseCamera();
+void OnRegisterVirtualCamera();
+void OnUnregisterVirtualCamera();
+void OnStartVirtualCamera();
+void OnStopVirtualCamera();
 void OnExit();
 void ShowStatusMessage();
 Frame GetLatestProcessedFrame();  // Callback for preview window
@@ -70,6 +76,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_START_CAMERA, OnStartCamera);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_STOP_CAMERA, OnStopCamera);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_RELEASE_CAMERA, OnReleaseCamera);
+    g_trayManager->SetMenuCallback(SystemTrayManager::MENU_REGISTER_VIRTUAL_CAMERA, OnRegisterVirtualCamera);
+    g_trayManager->SetMenuCallback(SystemTrayManager::MENU_UNREGISTER_VIRTUAL_CAMERA, OnUnregisterVirtualCamera);
+    g_trayManager->SetMenuCallback(SystemTrayManager::MENU_START_VIRTUAL_CAMERA, OnStartVirtualCamera);
+    g_trayManager->SetMenuCallback(SystemTrayManager::MENU_STOP_VIRTUAL_CAMERA, OnStopVirtualCamera);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_SETTINGS, OnSettings);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_EXIT, OnExit);
 
@@ -133,24 +143,15 @@ bool InitializeComponents() {
             return false;
         }
 
-        // Initialize virtual camera
+        // Initialize virtual camera (legacy)
         g_virtualCamera = std::make_unique<VirtualCameraFilter>();
         if (!g_virtualCamera->Initialize()) {
-            std::cerr << "Failed to initialize virtual camera filter" << std::endl;
-            // Don't fail initialization - virtual camera is optional for now
-        } else {
-            // Register virtual camera with DirectShow
-            if (!g_virtualCamera->Register()) {
-                std::cerr << "Failed to register virtual camera filter" << std::endl;
-                // Don't fail initialization - virtual camera is optional for now
-            } else {
-                // Start virtual camera
-                if (!g_virtualCamera->Start()) {
-                    std::cerr << "Failed to start virtual camera" << std::endl;
-                    // Don't fail initialization - virtual camera is optional for now
-                }
-            }
+            std::cerr << "Failed to initialize legacy virtual camera filter" << std::endl;
         }
+
+        // Initialize new DirectShow virtual camera manager
+        g_virtualCameraManager = std::make_unique<VirtualCameraManager>();
+        std::cout << "[Main] ✓ Virtual camera manager initialized" << std::endl;
 
         return true;
     } catch (const std::exception&) {
@@ -274,6 +275,110 @@ void OnReleaseCamera() {
     }
 }
 
+void OnRegisterVirtualCamera() {
+    if (g_virtualCameraManager) {
+        std::cout << "[Main] Registering virtual camera..." << std::endl;
+        
+        if (g_virtualCameraManager->RegisterVirtualCamera()) {
+            if (g_trayManager) {
+                g_trayManager->UpdateTooltip(L"MySubstitute - Virtual Camera Registered");
+            }
+            
+            MessageBoxA(nullptr,
+                "🎉 Virtual Camera Registered Successfully!\n\n"
+                "MySubstitute Virtual Camera is now available in:\n"
+                "• Camera app\n"
+                "• Zoom, Teams, Discord\n"
+                "• Chrome, Edge browsers\n"
+                "• Any application that uses cameras\n\n"
+                "Start the virtual camera to begin streaming AI-processed video.",
+                "Virtual Camera Ready!", MB_OK | MB_ICONINFORMATION);
+        } else {
+            MessageBoxA(nullptr,
+                "❌ Failed to Register Virtual Camera\n\n"
+                "Please make sure:\n"
+                "• You're running as Administrator\n"
+                "• No antivirus software is blocking the registration\n"
+                "• Try right-clicking MySubstitute and 'Run as Administrator'",
+                "Registration Failed", MB_OK | MB_ICONERROR);
+        }
+    }
+}
+
+void OnUnregisterVirtualCamera() {
+    if (g_virtualCameraManager) {
+        std::cout << "[Main] Unregistering virtual camera..." << std::endl;
+        
+        if (g_virtualCameraManager->UnregisterVirtualCamera()) {
+            if (g_trayManager) {
+                g_trayManager->UpdateTooltip(L"MySubstitute - Virtual Camera Unregistered");
+            }
+            
+            MessageBoxA(nullptr,
+                "✓ Virtual Camera Unregistered\n\n"
+                "MySubstitute Virtual Camera has been removed from the system.\n"
+                "Applications will no longer see it in their camera lists.",
+                "Virtual Camera Removed", MB_OK | MB_ICONINFORMATION);
+        } else {
+            MessageBoxA(nullptr,
+                "❌ Failed to Unregister Virtual Camera\n\n"
+                "Make sure you're running as Administrator.",
+                "Unregistration Failed", MB_OK | MB_ICONERROR);
+        }
+    }
+}
+
+void OnStartVirtualCamera() {
+    if (g_virtualCameraManager) {
+        std::cout << "[Main] Starting virtual camera..." << std::endl;
+        
+        if (!g_virtualCameraManager->IsRegistered()) {
+            MessageBoxA(nullptr,
+                "⚠️ Virtual Camera Not Registered\n\n"
+                "Please register the virtual camera first using:\n"
+                "'📹 Register Virtual Camera' from the menu.",
+                "Not Registered", MB_OK | MB_ICONWARNING);
+            return;
+        }
+        
+        if (g_virtualCameraManager->StartVirtualCamera()) {
+            if (g_trayManager) {
+                g_trayManager->UpdateTooltip(L"MySubstitute - Virtual Camera Active");
+            }
+            
+            MessageBoxA(nullptr,
+                "🎬 Virtual Camera Started!\n\n"
+                "MySubstitute is now streaming AI-processed video.\n"
+                "Open any camera application to select 'MySubstitute Virtual Camera'.\n\n"
+                "Make sure your real camera is also started to provide video input.",
+                "Virtual Camera Active", MB_OK | MB_ICONINFORMATION);
+        } else {
+            MessageBoxA(nullptr,
+                "❌ Failed to Start Virtual Camera\n\n"
+                "Please check that the camera is registered and try again.",
+                "Start Failed", MB_OK | MB_ICONERROR);
+        }
+    }
+}
+
+void OnStopVirtualCamera() {
+    if (g_virtualCameraManager) {
+        std::cout << "[Main] Stopping virtual camera..." << std::endl;
+        
+        if (g_virtualCameraManager->StopVirtualCamera()) {
+            if (g_trayManager) {
+                g_trayManager->UpdateTooltip(L"MySubstitute - Virtual Camera Stopped");
+            }
+            
+            MessageBoxA(nullptr,
+                "⏹️ Virtual Camera Stopped\n\n"
+                "MySubstitute Virtual Camera is no longer streaming.\n"
+                "Applications will show 'camera not available' or switch to other cameras.",
+                "Virtual Camera Stopped", MB_OK | MB_ICONINFORMATION);
+        }
+    }
+}
+
 void OnExit() {
     g_running = false;
     PostQuitMessage(0);
@@ -357,8 +462,13 @@ void OnCameraFrame(const Frame& frame) {
         g_lastProcessedFrame = processedFrame;
     }
     
-    // Send processed frame to virtual camera
+    // Send processed frame to virtual camera (legacy)
     if (g_virtualCamera && g_virtualCamera->IsRunning()) {
         g_virtualCamera->UpdateFrame(processedFrame);
+    }
+    
+    // Send processed frame to new DirectShow virtual camera
+    if (g_virtualCameraManager && g_virtualCameraManager->IsActive()) {
+        g_virtualCameraManager->UpdateFrame(processedFrame);
     }
 }

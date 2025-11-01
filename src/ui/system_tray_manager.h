@@ -21,9 +21,13 @@ public:
         MENU_START_CAMERA = 1003,
         MENU_STOP_CAMERA = 1004,
         MENU_RELEASE_CAMERA = 1005,
-        MENU_SETTINGS = 1006,
-        MENU_SEPARATOR = 1007,
-        MENU_EXIT = 1008
+        MENU_REGISTER_VIRTUAL_CAMERA = 1006,
+        MENU_UNREGISTER_VIRTUAL_CAMERA = 1007,
+        MENU_START_VIRTUAL_CAMERA = 1008,
+        MENU_STOP_VIRTUAL_CAMERA = 1009,
+        MENU_SETTINGS = 1010,
+        MENU_SEPARATOR = 1011,
+        MENU_EXIT = 1012
     };
 
     SystemTrayManager();
@@ -115,6 +119,10 @@ private:
     MenuCallback m_startCameraCallback;
     MenuCallback m_stopCameraCallback;
     MenuCallback m_releaseCameraCallback;
+    MenuCallback m_registerVirtualCameraCallback;
+    MenuCallback m_unregisterVirtualCameraCallback;
+    MenuCallback m_startVirtualCameraCallback;
+    MenuCallback m_stopVirtualCameraCallback;
     MenuCallback m_settingsCallback;
     MenuCallback m_exitCallback;
 };

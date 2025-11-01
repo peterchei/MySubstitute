@@ -59,6 +59,9 @@ set(SOURCES
     src/ai/ai_processor.cpp
     src/ai/passthrough_processor.cpp
     src/virtual_camera/virtual_camera_filter.cpp
+    src/virtual_camera/virtual_camera_directshow.cpp
+    src/virtual_camera/class_factory.cpp
+    src/virtual_camera/virtual_camera_manager.cpp
     src/virtual_camera/directshow_source_filter.cpp
     src/service/background_service.cpp
     src/ui/system_tray_manager.cpp

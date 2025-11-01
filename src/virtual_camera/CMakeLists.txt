@@ -3,12 +3,18 @@ cmake_minimum_required(VERSION 3.20)
 # Virtual Camera Module
 set(VIRTUAL_CAMERA_SOURCES
     virtual_camera_filter.cpp
+    virtual_camera_directshow.cpp
+    class_factory.cpp
+    virtual_camera_manager.cpp
     directshow_filter.cpp
     output_pin.cpp
 )
 
 set(VIRTUAL_CAMERA_HEADERS
     virtual_camera_filter.h
+    virtual_camera_directshow.h
+    class_factory.h
+    virtual_camera_manager.h
     directshow_filter.h
     output_pin.h
 )

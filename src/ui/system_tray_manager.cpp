@@ -57,6 +57,11 @@ bool SystemTrayManager::Initialize(HINSTANCE hInstance, const std::wstring& wind
     AppendMenuW(m_hMenu, MF_STRING, MENU_STOP_CAMERA, L"Stop Camera");
     AppendMenuW(m_hMenu, MF_STRING, MENU_RELEASE_CAMERA, L"Release Camera for Other Apps");
     AppendMenuW(m_hMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m_hMenu, MF_STRING, MENU_REGISTER_VIRTUAL_CAMERA, L"📹 Register Virtual Camera");
+    AppendMenuW(m_hMenu, MF_STRING, MENU_UNREGISTER_VIRTUAL_CAMERA, L"❌ Unregister Virtual Camera");
+    AppendMenuW(m_hMenu, MF_STRING, MENU_START_VIRTUAL_CAMERA, L"▶️ Start Virtual Camera");
+    AppendMenuW(m_hMenu, MF_STRING, MENU_STOP_VIRTUAL_CAMERA, L"⏹️ Stop Virtual Camera");
+    AppendMenuW(m_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m_hMenu, MF_STRING, MENU_SETTINGS, L"Settings");
     AppendMenuW(m_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m_hMenu, MF_STRING, MENU_EXIT, L"Exit");
@@ -118,6 +123,18 @@ void SystemTrayManager::SetMenuCallback(MenuItems menuId, MenuCallback callback)
             break;
         case MENU_RELEASE_CAMERA:
             m_releaseCameraCallback = callback;
+            break;
+        case MENU_REGISTER_VIRTUAL_CAMERA:
+            m_registerVirtualCameraCallback = callback;
+            break;
+        case MENU_UNREGISTER_VIRTUAL_CAMERA:
+            m_unregisterVirtualCameraCallback = callback;
+            break;
+        case MENU_START_VIRTUAL_CAMERA:
+            m_startVirtualCameraCallback = callback;
+            break;
+        case MENU_STOP_VIRTUAL_CAMERA:
+            m_stopVirtualCameraCallback = callback;
             break;
         case MENU_SETTINGS:
             m_settingsCallback = callback;
@@ -246,6 +263,30 @@ void SystemTrayManager::HandleMenuCommand(UINT commandId) {
         case MENU_RELEASE_CAMERA:
             if (m_releaseCameraCallback) {
                 m_releaseCameraCallback();
+            }
+            break;
+
+        case MENU_REGISTER_VIRTUAL_CAMERA:
+            if (m_registerVirtualCameraCallback) {
+                m_registerVirtualCameraCallback();
+            }
+            break;
+
+        case MENU_UNREGISTER_VIRTUAL_CAMERA:
+            if (m_unregisterVirtualCameraCallback) {
+                m_unregisterVirtualCameraCallback();
+            }
+            break;
+
+        case MENU_START_VIRTUAL_CAMERA:
+            if (m_startVirtualCameraCallback) {
+                m_startVirtualCameraCallback();
+            }
+            break;
+
+        case MENU_STOP_VIRTUAL_CAMERA:
+            if (m_stopVirtualCameraCallback) {
+                m_stopVirtualCameraCallback();
             }
             break;
 
