@@ -3,6 +3,7 @@
 #include <memory>
 #include <iostream>
 #include <string>
+#include <mutex>
 
 #include "capture/camera_capture.h"
 #include "ai/ai_processor.h"
@@ -19,6 +20,9 @@ std::unique_ptr<PassthroughProcessor> g_processor;
 std::unique_ptr<PreviewWindowManager> g_previewManager;
 bool g_running = true;
 Frame g_lastProcessedFrame;  // Store the latest processed frame for preview
+Frame g_lastCameraFrame;     // Store the latest camera frame
+std::mutex g_frameMutex;     // Protect frame access
+bool g_cameraActive = false; // Track camera state
 
 // Function declarations
 bool InitializeComponents();
@@ -27,9 +31,12 @@ void OnShowStatus();
 void OnSettings();
 void OnShowPreview();
 void OnHidePreview();
+void OnStartCamera();
+void OnStopCamera();
 void OnExit();
 void ShowStatusMessage();
 Frame GetLatestProcessedFrame();  // Callback for preview window
+void OnCameraFrame(const Frame& frame);  // Camera frame callback
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     // Initialize COM for DirectShow
@@ -58,6 +65,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // Set tray menu callbacks
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_SHOW_STATUS, OnShowStatus);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_SHOW_PREVIEW, OnShowPreview);
+    g_trayManager->SetMenuCallback(SystemTrayManager::MENU_START_CAMERA, OnStartCamera);
+    g_trayManager->SetMenuCallback(SystemTrayManager::MENU_STOP_CAMERA, OnStopCamera);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_SETTINGS, OnSettings);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_EXIT, OnExit);
 
@@ -104,6 +113,15 @@ bool InitializeComponents() {
         g_camera = CameraCapture::Create();
         if (!g_camera || !g_camera->Initialize()) {
             return false;
+        }
+
+        // Set up camera callback
+        g_camera->SetFrameCallback(OnCameraFrame);
+        
+        // Select first available camera by default
+        auto cameras = g_camera->GetAvailableCameras();
+        if (!cameras.empty()) {
+            g_camera->SelectCamera(cameras[0].id);
         }
 
         // Initialize AI processor
@@ -164,6 +182,39 @@ void OnHidePreview() {
     }
 }
 
+void OnStartCamera() {
+    if (g_camera) {
+        if (g_camera->StartCapture()) {
+            g_cameraActive = true;
+            if (g_trayManager) {
+                g_trayManager->UpdateTooltip(L"MySubstitute - Camera Active");
+            }
+            // Automatically show preview when camera starts
+            if (g_previewManager && !g_previewManager->IsVisible()) {
+                g_previewManager->ShowPreview();
+            }
+        } else {
+            MessageBoxA(nullptr, "Failed to start camera capture", "Camera Error", MB_OK | MB_ICONERROR);
+        }
+    }
+}
+
+void OnStopCamera() {
+    if (g_camera) {
+        g_camera->StopCapture();
+        g_cameraActive = false;
+        if (g_trayManager) {
+            g_trayManager->UpdateTooltip(L"MySubstitute - Camera Stopped");
+        }
+        // Clear the last frames
+        {
+            std::lock_guard<std::mutex> lock(g_frameMutex);
+            g_lastCameraFrame = Frame();
+            g_lastProcessedFrame = Frame();
+        }
+    }
+}
+
 void OnExit() {
     g_running = false;
     PostQuitMessage(0);
@@ -193,17 +244,26 @@ void ShowStatusMessage() {
 }
 
 Frame GetLatestProcessedFrame() {
-    // For now, create a simple test frame showing the caption functionality
+    std::lock_guard<std::mutex> lock(g_frameMutex);
+    
+    // Return processed camera frame if available, otherwise use test frame
+    if (g_lastProcessedFrame.IsValid()) {
+        return g_lastProcessedFrame;
+    }
+    
+    // Fallback to test frame if no camera data available
     if (g_processor) {
 #if HAVE_OPENCV
-        // Create a blue frame with some visual pattern
+        // Create a test frame indicating no camera
         cv::Mat testMat = cv::Mat::zeros(480, 640, CV_8UC3);
-        testMat.setTo(cv::Scalar(128, 64, 32));  // Blue-ish background
+        testMat.setTo(cv::Scalar(64, 32, 128));  // Purple-ish background
         
-        // Add some visual elements to make it interesting
-        cv::circle(testMat, cv::Point(320, 240), 100, cv::Scalar(255, 255, 255), 3);
-        cv::putText(testMat, "Live Preview Test", cv::Point(200, 50), 
+        // Add some visual elements
+        cv::circle(testMat, cv::Point(320, 240), 80, cv::Scalar(255, 255, 255), 2);
+        cv::putText(testMat, "No Camera Active", cv::Point(200, 230), 
                    cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(255, 255, 255), 2);
+        cv::putText(testMat, "Start camera from tray menu", cv::Point(150, 260), 
+                   cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(200, 200, 200), 1);
         
         // Create Frame from Mat
         Frame testFrame(testMat);
@@ -221,4 +281,20 @@ Frame GetLatestProcessedFrame() {
     
     // Return empty frame if no processor available
     return Frame();
+}
+
+void OnCameraFrame(const Frame& frame) {
+    if (!g_processor) {
+        return;
+    }
+    
+    // Process the frame through AI processor
+    Frame processedFrame = g_processor->ProcessFrame(frame);
+    
+    // Store both original and processed frames
+    {
+        std::lock_guard<std::mutex> lock(g_frameMutex);
+        g_lastCameraFrame = frame;
+        g_lastProcessedFrame = processedFrame;
+    }
 }

@@ -18,9 +18,11 @@ public:
     enum MenuItems {
         MENU_SHOW_STATUS = 1001,
         MENU_SHOW_PREVIEW = 1002,
-        MENU_SETTINGS = 1003,
-        MENU_SEPARATOR = 1004,
-        MENU_EXIT = 1005
+        MENU_START_CAMERA = 1003,
+        MENU_STOP_CAMERA = 1004,
+        MENU_SETTINGS = 1005,
+        MENU_SEPARATOR = 1006,
+        MENU_EXIT = 1007
     };
 
     SystemTrayManager();
@@ -109,6 +111,8 @@ private:
     // Callback functions
     MenuCallback m_showStatusCallback;
     MenuCallback m_showPreviewCallback;
+    MenuCallback m_startCameraCallback;
+    MenuCallback m_stopCameraCallback;
     MenuCallback m_settingsCallback;
     MenuCallback m_exitCallback;
 };

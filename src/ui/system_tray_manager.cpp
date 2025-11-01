@@ -52,6 +52,10 @@ bool SystemTrayManager::Initialize(HINSTANCE hInstance, const std::wstring& wind
     // Add menu items
     AppendMenuW(m_hMenu, MF_STRING, MENU_SHOW_STATUS, L"Show Status");
     AppendMenuW(m_hMenu, MF_STRING, MENU_SHOW_PREVIEW, L"Show Preview");
+    AppendMenuW(m_hMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m_hMenu, MF_STRING, MENU_START_CAMERA, L"Start Camera");
+    AppendMenuW(m_hMenu, MF_STRING, MENU_STOP_CAMERA, L"Stop Camera");
+    AppendMenuW(m_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m_hMenu, MF_STRING, MENU_SETTINGS, L"Settings");
     AppendMenuW(m_hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m_hMenu, MF_STRING, MENU_EXIT, L"Exit");
@@ -104,6 +108,12 @@ void SystemTrayManager::SetMenuCallback(MenuItems menuId, MenuCallback callback)
             break;
         case MENU_SHOW_PREVIEW:
             m_showPreviewCallback = callback;
+            break;
+        case MENU_START_CAMERA:
+            m_startCameraCallback = callback;
+            break;
+        case MENU_STOP_CAMERA:
+            m_stopCameraCallback = callback;
             break;
         case MENU_SETTINGS:
             m_settingsCallback = callback;
@@ -214,6 +224,18 @@ void SystemTrayManager::HandleMenuCommand(UINT commandId) {
         case MENU_SHOW_PREVIEW:
             if (m_showPreviewCallback) {
                 m_showPreviewCallback();
+            }
+            break;
+
+        case MENU_START_CAMERA:
+            if (m_startCameraCallback) {
+                m_startCameraCallback();
+            }
+            break;
+
+        case MENU_STOP_CAMERA:
+            if (m_stopCameraCallback) {
+                m_stopCameraCallback();
             }
             break;
 
