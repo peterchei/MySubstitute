@@ -1,6 +1,7 @@
-cmake_minimum_required(VERSION 3.20)
-project(MySubstitute)
+cmake_minimum_required(VERSION 3.16)
+project(MySubstitute VERSION 1.0.0)
 
+# Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -9,75 +10,66 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-# Platform specific settings
+# Windows specific settings
 if(WIN32)
     add_definitions(-DWIN32_LEAN_AND_MEAN)
     add_definitions(-DNOMINMAX)
-    
-    # DirectShow and Windows Media Foundation
-    find_path(DIRECTSHOW_INCLUDE_DIR streams.h
-        HINTS
-        "$ENV{WindowsSdkDir}Samples/multimedia/directshow/baseclasses"
-        "C:/Program Files (x86)/Microsoft SDKs/Windows Kits/10/Samples/multimedia/directshow/baseclasses"
-        "C:/Program Files/Microsoft SDKs/Windows Kits/10/Samples/multimedia/directshow/baseclasses"
-    )
-    
-    if(NOT DIRECTSHOW_INCLUDE_DIR)
-        message(WARNING "DirectShow base classes not found. Please install Windows SDK with samples.")
-    endif()
-    
 endif()
 
-# Find required packages
-find_package(OpenCV REQUIRED)
-find_package(Qt6 COMPONENTS Core Widgets QUIET)
+# Find OpenCV (make it optional for now)
+find_package(OpenCV QUIET)
+if(NOT OpenCV_FOUND)
+    message(WARNING "OpenCV not found - some features will be disabled")
+    set(HAVE_OPENCV FALSE)
+else()
+    message(STATUS "OpenCV found: ${OpenCV_VERSION}")
+    set(HAVE_OPENCV TRUE)
+endif()
 
 # Include directories
-include_directories(src)
-include_directories(${OpenCV_INCLUDE_DIRS})
-
-if(DIRECTSHOW_INCLUDE_DIR)
-    include_directories(${DIRECTSHOW_INCLUDE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(HAVE_OPENCV)
+    include_directories(${OpenCV_INCLUDE_DIRS})
 endif()
 
-# Add subdirectories
-add_subdirectory(src/capture)
-add_subdirectory(src/ai)
-add_subdirectory(src/virtual_camera)
-add_subdirectory(src/service)
-
-if(Qt6_FOUND)
-    add_subdirectory(src/ui)
-    message(STATUS "Qt6 found - building UI components")
-else()
-    message(WARNING "Qt6 not found - skipping UI components")
-endif()
-
-# Main executable (for testing)
-add_executable(MySubstitute
+# Create a simple executable with all sources in one place
+set(SOURCES
     src/main.cpp
+    src/capture/camera_capture.cpp
+    src/capture/frame.cpp
+    src/ai/ai_processor.cpp
+    src/ai/passthrough_processor.cpp
+    src/virtual_camera/virtual_camera_filter.cpp
+    src/service/background_service.cpp
 )
 
-target_link_libraries(MySubstitute
-    CaptureModule
-    AIProcessor
-    VirtualCamera
-    ServiceModule
-    ${OpenCV_LIBS}
-)
+# Create executable
+add_executable(MySubstitute ${SOURCES})
 
+# Configure preprocessor definitions
+if(HAVE_OPENCV)
+    target_compile_definitions(MySubstitute PRIVATE HAVE_OPENCV=1)
+    target_link_libraries(MySubstitute ${OpenCV_LIBS})
+else()
+    target_compile_definitions(MySubstitute PRIVATE HAVE_OPENCV=0)
+endif()
+
+# Link Windows libraries
 if(WIN32)
     target_link_libraries(MySubstitute
-        ole32
-        oleaut32
-        uuid
-        strmiids
+        ole32         # COM
+        oleaut32      # COM automation
+        uuid          # GUID support
+        strmiids      # DirectShow
+        winmm         # Windows multimedia
+        mfplat        # Media Foundation
+        mf            # Media Foundation
+        mfuuid        # Media Foundation UUIDs
     )
 endif()
 
-# Installation
-install(TARGETS MySubstitute
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
+# Set target properties
+set_target_properties(MySubstitute PROPERTIES
+    WIN32_EXECUTABLE TRUE
+    DEBUG_POSTFIX "_d"
 )

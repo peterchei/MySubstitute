@@ -74,6 +74,12 @@ public:
      */
     virtual bool SetResolution(int width, int height);
     
+    /**
+     * Create a camera capture instance
+     * @return Smart pointer to camera capture implementation
+     */
+    static std::unique_ptr<CameraCapture> Create();
+
 protected:
     bool m_initialized;
     bool m_capturing;

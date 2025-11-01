@@ -20,7 +20,7 @@ int main() {
     try {
         // Test camera enumeration
         std::cout << "Initializing camera capture..." << std::endl;
-        auto camera = std::make_unique<CameraCapture>();
+        auto camera = CameraCapture::Create();
         
         if (!camera->Initialize()) {
             std::cerr << "Failed to initialize camera capture" << std::endl;
