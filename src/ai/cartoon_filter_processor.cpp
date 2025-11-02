@@ -88,21 +88,34 @@ void CartoonFilterProcessor::ApplySimpleCartoon(cv::Mat& frame)
     }
 
     try {
-        // Step 1: Apply bilateral filter iteratively
+        // Apply bilateral filtering for smooth colors
         cv::Mat smoothed = frame.clone();
+        
+        // Multiple passes for smoother, more cartoon-like appearance
         for (int i = 0; i < m_smoothingLevel; ++i) {
             cv::Mat temp;
-            cv::bilateralFilter(smoothed, temp, 7, 50, 50);
+            cv::bilateralFilter(smoothed, temp, 8, 60, 60);
             temp.copyTo(smoothed);
         }
 
-        // Step 2: Quantize colors to reduce palette
-        cv::Mat quantized = QuantizeColors(smoothed, m_colorLevels);
+        // Enhance saturation for more vibrant cartoon colors
+        cv::Mat hsv;
+        cv::cvtColor(smoothed, hsv, cv::COLOR_BGR2HSV);
+        for (int y = 0; y < hsv.rows; ++y) {
+            cv::Vec3b* row = hsv.ptr<cv::Vec3b>(y);
+            for (int x = 0; x < hsv.cols; ++x) {
+                row[x][1] = cv::saturate_cast<uint8_t>(row[x][1] * 1.5f);  // Stronger saturation
+            }
+        }
+        cv::cvtColor(hsv, smoothed, cv::COLOR_HSV2BGR);
 
-        // Step 3: Detect edges
+        // More aggressive color quantization for cartoon look
+        cv::Mat quantized = QuantizeColors(smoothed, 6);  // Fewer colors = more cartoon
+
+        // Edge detection
         cv::Mat edges = DetectEdges(smoothed);
 
-        // Step 4: Apply edges
+        // Apply edges
         if (!edges.empty()) {
             CombineEdgesWithColors(quantized, edges);
         }
@@ -122,26 +135,30 @@ void CartoonFilterProcessor::ApplyDetailedCartoon(cv::Mat& frame)
     }
 
     try {
-        // More aggressive cartoon effect
+        // Smoothing for detailed cartoon effect
         cv::Mat smoothed = frame.clone();
-        int iterations = std::max(m_smoothingLevel - 1, 1);
-        for (int i = 0; i < iterations; ++i) {
+        for (int i = 0; i < m_smoothingLevel; ++i) {
             cv::Mat temp;
-            cv::bilateralFilter(smoothed, temp, 9, 40, 40);
+            cv::bilateralFilter(smoothed, temp, 10, 70, 70);  // Stronger smoothing
             temp.copyTo(smoothed);
         }
 
-        // Fewer colors for more pronounced cartoon effect
-        cv::Mat quantized = QuantizeColors(smoothed, std::max(m_colorLevels - 2, 4));
-
-        // Stronger edge detection
-        cv::Mat edges = DetectEdges(smoothed);
-
-        // Enhance edges for more visible outlines
-        if (!edges.empty()) {
-            cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2, 2));
-            cv::dilate(edges, edges, kernel, cv::Point(-1, -1), 1);
+        // Enhance saturation aggressively
+        cv::Mat hsv;
+        cv::cvtColor(smoothed, hsv, cv::COLOR_BGR2HSV);
+        for (int y = 0; y < hsv.rows; ++y) {
+            cv::Vec3b* row = hsv.ptr<cv::Vec3b>(y);
+            for (int x = 0; x < hsv.cols; ++x) {
+                row[x][1] = cv::saturate_cast<uint8_t>(row[x][1] * 1.6f);  // Much stronger saturation
+            }
         }
+        cv::cvtColor(hsv, smoothed, cv::COLOR_HSV2BGR);
+
+        // Aggressive color reduction
+        cv::Mat quantized = QuantizeColors(smoothed, 5);  // Very few colors
+
+        // Edge detection
+        cv::Mat edges = DetectEdges(smoothed);
 
         if (!edges.empty() && !quantized.empty()) {
             CombineEdgesWithColors(quantized, edges);
@@ -162,24 +179,30 @@ void CartoonFilterProcessor::ApplyAnimeStyle(cv::Mat& frame)
     }
 
     try {
-        // Maximum smoothing for anime look
+        // Strong smoothing for anime look
         cv::Mat smoothed = frame.clone();
-        int iterations = std::max(m_smoothingLevel, 2);
-        for (int i = 0; i < iterations; ++i) {
+        for (int i = 0; i < m_smoothingLevel; ++i) {
             cv::Mat temp;
-            cv::bilateralFilter(smoothed, temp, 11, 60, 60);
+            cv::bilateralFilter(smoothed, temp, 11, 80, 80);  // Strong smoothing
             temp.copyTo(smoothed);
         }
 
-        // Aggressive color reduction for vibrant anime palette
-        cv::Mat quantized = QuantizeColors(smoothed, std::min(m_colorLevels, 6));
-
-        // Strong edge detection for anime outlines
-        cv::Mat edges = DetectEdges(smoothed);
-        if (!edges.empty()) {
-            cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2, 2));
-            cv::dilate(edges, edges, kernel, cv::Point(-1, -1), 2);
+        // Enhance saturation for vibrant anime colors
+        cv::Mat hsv;
+        cv::cvtColor(smoothed, hsv, cv::COLOR_BGR2HSV);
+        for (int y = 0; y < hsv.rows; ++y) {
+            cv::Vec3b* row = hsv.ptr<cv::Vec3b>(y);
+            for (int x = 0; x < hsv.cols; ++x) {
+                row[x][1] = cv::saturate_cast<uint8_t>(row[x][1] * 1.8f);  // Maximum saturation boost
+            }
         }
+        cv::cvtColor(hsv, smoothed, cv::COLOR_HSV2BGR);
+
+        // Extreme color reduction for anime palette
+        cv::Mat quantized = QuantizeColors(smoothed, 4);  // Very few colors for anime style
+
+        // Edge detection
+        cv::Mat edges = DetectEdges(smoothed);
 
         if (!edges.empty() && !quantized.empty()) {
             CombineEdgesWithColors(quantized, edges);
@@ -199,7 +222,7 @@ cv::Mat CartoonFilterProcessor::DetectEdges(const cv::Mat& src)
         return cv::Mat::zeros(src.size(), CV_8UC1);
     }
 
-    cv::Mat gray, laplacian, edges, result;
+    cv::Mat gray, blurred, laplacian, edges;
 
     // Convert to grayscale
     if (src.channels() == 3) {
@@ -209,24 +232,18 @@ cv::Mat CartoonFilterProcessor::DetectEdges(const cv::Mat& src)
     }
 
     // Apply Gaussian blur to reduce noise
-    cv::GaussianBlur(gray, gray, cv::Size(3, 3), 0);
+    cv::GaussianBlur(gray, blurred, cv::Size(5, 5), 1.0);
 
-    // Apply Laplacian operator for edge detection (use CV_16S for proper output)
-    cv::Laplacian(gray, laplacian, CV_16S, 1);
-
-    // Convert back to 8-bit
+    // Apply Laplacian operator for edge detection (fast)
+    cv::Laplacian(blurred, laplacian, CV_16S, 1);
     cv::convertScaleAbs(laplacian, laplacian);
 
-    // Apply threshold to get binary edges - adjust based on m_edgeThreshold
-    int threshold = std::max(20, m_edgeThreshold / 3);  // Better scaling
+    // Apply threshold to get binary edges - lowered threshold for better edge preservation
+    int threshold = std::max(10, m_edgeThreshold / 5);
     cv::threshold(laplacian, edges, threshold, 255, cv::THRESH_BINARY);
 
-    // Invert: we want white edges (255) to apply as black lines
+    // Invert: we want white areas where edges are (for masking)
     cv::bitwise_not(edges, edges);
-
-    // Dilate to strengthen edges
-    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(2, 2));
-    cv::dilate(edges, edges, kernel, cv::Point(-1, -1), 1);
 
     return edges;
 }
@@ -240,7 +257,8 @@ cv::Mat CartoonFilterProcessor::QuantizeColors(const cv::Mat& src, int levels)
     cv::Mat dst = src.clone();
     int divideValue = std::max(1, 256 / levels);
 
-    // Optimize: use pointer-based access for speed
+    // Fast quantization using pointer-based access
+    // This is much faster than k-means for real-time processing
     for (int y = 0; y < dst.rows; ++y) {
         cv::Vec3b* row = dst.ptr<cv::Vec3b>(y);
         for (int x = 0; x < dst.cols; ++x) {
@@ -263,14 +281,18 @@ void CartoonFilterProcessor::CombineEdgesWithColors(cv::Mat& frame, const cv::Ma
         return;  // Size mismatch
     }
 
-    // Use pointer-based access for speed
+    // Use pointer-based access for maximum speed
     for (int y = 0; y < frame.rows; ++y) {
         cv::Vec3b* frameRow = frame.ptr<cv::Vec3b>(y);
         const uint8_t* edgesRow = edges.ptr<uint8_t>(y);
         
         for (int x = 0; x < frame.cols; ++x) {
-            if (edgesRow[x] < 200) {  // Edge detected (dark region)
-                frameRow[x] = cv::Vec3b(0, 0, 0);  // Pure black outline
+            uint8_t edgeVal = edgesRow[x];
+            if (edgeVal < 220) {  // Edge detected
+                // Darker but more visible outlines - better cartoon look
+                frameRow[x][0] = cv::saturate_cast<uint8_t>(frameRow[x][0] * 0.3f);
+                frameRow[x][1] = cv::saturate_cast<uint8_t>(frameRow[x][1] * 0.3f);
+                frameRow[x][2] = cv::saturate_cast<uint8_t>(frameRow[x][2] * 0.3f);
             }
         }
     }
