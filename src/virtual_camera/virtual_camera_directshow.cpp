@@ -6,6 +6,7 @@
 #include <ks.h>
 #include <ksmedia.h>
 #include <iostream>
+#include <cmath>
 
 // DirectShow time units (100ns intervals)
 #define UNITS 10000000
@@ -499,6 +500,10 @@ STDMETHODIMP MySubstituteOutputPin::Connect(IPin *pReceivePin, const AM_MEDIA_TY
                 hr = m_pMemAllocator->SetProperties(&props, &actualProps);
                 if (SUCCEEDED(hr)) {
                     hr = pMemInputPin->NotifyAllocator(m_pMemAllocator, FALSE);
+                    if (SUCCEEDED(hr)) {
+                        // CRITICAL: Commit the allocator so it can provide buffers
+                        hr = m_pMemAllocator->Commit();
+                    }
                 }
             }
             
@@ -518,6 +523,15 @@ STDMETHODIMP MySubstituteOutputPin::ReceiveConnection(IPin *pConnector, const AM
 STDMETHODIMP MySubstituteOutputPin::Disconnect()
 {
     Lock();
+    
+    // Stop streaming first
+    Inactive();
+    
+    if (m_pMemAllocator) {
+        m_pMemAllocator->Decommit();
+        m_pMemAllocator->Release();
+        m_pMemAllocator = nullptr;
+    }
     
     if (m_pConnectedPin) {
         m_pConnectedPin->Release();
@@ -1075,14 +1089,50 @@ void MySubstituteOutputPin::GenerateTestFrameData(BYTE* pBuffer, long bufferSize
 {
     if (!pBuffer || bufferSize < (640 * 480 * 3)) return;
     
-    // Generate simple test pattern directly to buffer
+    // Generate animated test pattern with moving elements
+    static DWORD animationOffset = 0;
+    animationOffset += 5; // Animation speed
+    
+    DWORD timeOffset = GetTickCount() / 100; // Smooth time-based animation
+    
     for (int y = 0; y < 480; y++) {
         for (int x = 0; x < 640; x++) {
             int index = (y * 640 + x) * 3;
             if (index + 2 < bufferSize) {
-                pBuffer[index + 0] = (BYTE)((x * 255) / 640);     // Red
-                pBuffer[index + 1] = (BYTE)((y * 255) / 480);     // Green  
-                pBuffer[index + 2] = (BYTE)(((x + y) * 255) / (640 + 480)); // Blue
+                // Create animated gradient with moving wave patterns
+                int wave1 = (int)(127 * sin((x + timeOffset * 2) * 0.01) + 128);
+                int wave2 = (int)(127 * sin((y + timeOffset * 3) * 0.01) + 128);
+                int wave3 = (int)(127 * sin((x + y + timeOffset * 4) * 0.005) + 128);
+                
+                // Add moving color bands
+                int band = ((x + y + animationOffset) / 20) % 3;
+                
+                switch(band) {
+                    case 0: // Red band
+                        pBuffer[index + 0] = (BYTE)(wave1);  // Red
+                        pBuffer[index + 1] = (BYTE)(wave2 / 4);  // Green
+                        pBuffer[index + 2] = (BYTE)(wave3 / 4);  // Blue
+                        break;
+                    case 1: // Green band  
+                        pBuffer[index + 0] = (BYTE)(wave1 / 4);  // Red
+                        pBuffer[index + 1] = (BYTE)(wave2);      // Green
+                        pBuffer[index + 2] = (BYTE)(wave3 / 4);  // Blue
+                        break;
+                    case 2: // Blue band
+                        pBuffer[index + 0] = (BYTE)(wave1 / 4);  // Red
+                        pBuffer[index + 1] = (BYTE)(wave2 / 4);  // Green  
+                        pBuffer[index + 2] = (BYTE)(wave3);      // Blue
+                        break;
+                }
+                
+                // Add frame counter in top-left corner
+                if (x < 100 && y < 30) {
+                    if ((x / 10 + y / 10) % 2 == (timeOffset / 10) % 2) {
+                        pBuffer[index + 0] = 255; // White text area
+                        pBuffer[index + 1] = 255;
+                        pBuffer[index + 2] = 255;
+                    }
+                }
             }
         }
     }
