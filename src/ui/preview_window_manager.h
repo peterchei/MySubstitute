@@ -16,6 +16,7 @@ class PreviewWindowManager {
 public:
     // Callback function types
     using FrameCallback = std::function<Frame()>;  // Callback to get latest frame
+    using FilterChangeCallback = std::function<void(const std::string&)>;  // Callback for filter changes
     
     PreviewWindowManager();
     ~PreviewWindowManager();
@@ -24,9 +25,10 @@ public:
      * Initialize the preview window
      * @param hInstance Application instance handle
      * @param frameCallback Callback to get the latest processed frame
+     * @param filterCallback Callback when user changes filter selection
      * @return true if successful
      */
-    bool Initialize(HINSTANCE hInstance, FrameCallback frameCallback);
+    bool Initialize(HINSTANCE hInstance, FrameCallback frameCallback, FilterChangeCallback filterCallback = nullptr);
 
     /**
      * Show the preview window
@@ -92,6 +94,13 @@ private:
     // Create the preview window
     bool CreatePreviewWindow(HINSTANCE hInstance);
     
+    // Create control panel UI elements
+    bool CreateControlPanel();
+    
+    // Handle control panel events
+    void OnFilterSelectionChanged();
+    void OnControlPanelCommand(HWND hwnd, int id, int code);
+    
     // Render the current frame
     void RenderFrame();
     
@@ -105,6 +114,7 @@ private:
     // Constants
     static const int DEFAULT_WIDTH = 640;   // Match virtual camera resolution
     static const int DEFAULT_HEIGHT = 480;
+    static const int CONTROL_PANEL_WIDTH = 200;  // Width of control panel
     static const UINT TIMER_ID = 1;
     static const UINT WM_RENDER_FRAME = WM_USER + 100;
 
@@ -113,10 +123,19 @@ private:
     bool m_initialized;
     bool m_visible;
     FrameCallback m_frameCallback;
+    FilterChangeCallback m_filterCallback;
+    
+    // Control panel UI elements
+    HWND m_filterComboBox;
+    HWND m_glassesCheckBox;
+    HWND m_hatCheckBox;
+    HWND m_speechBubbleCheckBox;
+    HWND m_speechBubbleEdit;
     
     // Rendering
     HDC m_memDC;
     HBITMAP m_bitmap;
+    HBITMAP m_oldBitmap;  // Previously selected bitmap in memory DC
     BITMAPINFO m_bitmapInfo;
     void* m_bitmapData;
     

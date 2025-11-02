@@ -32,6 +32,9 @@ if(HAVE_OPENCV)
     include_directories(${OpenCV_INCLUDE_DIRS})
 endif()
 
+# Add subdirectories
+add_subdirectory(src/ai)
+
 # DirectShow base classes (usually in Windows SDK)
 if(WIN32)
     # Try common DirectShow base class locations
@@ -56,8 +59,6 @@ set(SOURCES
     src/main.cpp
     src/capture/camera_capture.cpp
     src/capture/frame.cpp
-    src/ai/ai_processor.cpp
-    src/ai/passthrough_processor.cpp
     src/virtual_camera/virtual_camera_filter.cpp
     src/virtual_camera/virtual_camera_directshow.cpp
     src/virtual_camera/class_factory.cpp
@@ -92,6 +93,7 @@ endif()
 # Link Windows libraries
 if(WIN32)
     target_link_libraries(MySubstitute
+        AIProcessor   # AI processing library
         ole32         # COM
         oleaut32      # COM automation
         uuid          # GUID support
@@ -182,3 +184,44 @@ add_custom_command(TARGET MySubstituteVirtualCameraDLL POST_BUILD
         "$<TARGET_FILE_DIR:MySubstitute>/MySubstituteVirtualCamera.dll"
     COMMENT "Safely copying DirectShow DLL (handles COM registration)"
 )
+
+# Test executables
+add_executable(test_face_filter
+    test_face_filter.cpp
+)
+
+target_include_directories(test_face_filter PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_face_filter
+    AIProcessor
+    ${OpenCV_LIBS}
+)
+
+# Configure preprocessor definitions for test
+if(HAVE_OPENCV)
+    target_compile_definitions(test_face_filter PRIVATE HAVE_OPENCV=1)
+else()
+    target_compile_definitions(test_face_filter PRIVATE HAVE_OPENCV=0)
+endif()
+
+add_executable(test_filter_callback
+    test_filter_callback.cpp
+)
+
+target_include_directories(test_filter_callback PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_filter_callback
+    AIProcessor
+    ${OpenCV_LIBS}
+)
+
+# Configure preprocessor definitions for test
+if(HAVE_OPENCV)
+    target_compile_definitions(test_filter_callback PRIVATE HAVE_OPENCV=1)
+else()
+    target_compile_definitions(test_filter_callback PRIVATE HAVE_OPENCV=0)
+endif()

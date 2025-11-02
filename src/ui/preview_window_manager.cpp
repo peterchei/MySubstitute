@@ -9,6 +9,7 @@ PreviewWindowManager::PreviewWindowManager()
     , m_visible(false)
     , m_memDC(nullptr)
     , m_bitmap(nullptr)
+    , m_oldBitmap(nullptr)
     , m_bitmapData(nullptr)
     , m_title(L"MySubstitute - Live Preview")
     , m_refreshRate(30)
@@ -23,13 +24,14 @@ PreviewWindowManager::~PreviewWindowManager() {
     Cleanup();
 }
 
-bool PreviewWindowManager::Initialize(HINSTANCE hInstance, FrameCallback frameCallback) {
+bool PreviewWindowManager::Initialize(HINSTANCE hInstance, FrameCallback frameCallback, FilterChangeCallback filterCallback) {
     if (m_initialized) {
         return true;
     }
 
     m_hInstance = hInstance;
     m_frameCallback = frameCallback;
+    m_filterCallback = filterCallback;
 
     if (!CreatePreviewWindow(hInstance)) {
         std::wcerr << L"Failed to create preview window" << std::endl;
@@ -63,8 +65,13 @@ bool PreviewWindowManager::Initialize(HINSTANCE hInstance, FrameCallback frameCa
         return false;
     }
     
-    SelectObject(m_memDC, m_bitmap);
-    ReleaseDC(m_hwnd, screenDC);
+    // Select the bitmap into the memory DC
+    m_oldBitmap = (HBITMAP)SelectObject(m_memDC, m_bitmap);
+    
+    if (!CreateControlPanel()) {
+        std::wcerr << L"Failed to create control panel" << std::endl;
+        return false;
+    }
 
     m_initialized = true;
     return true;
@@ -145,10 +152,17 @@ bool PreviewWindowManager::ProcessMessage(HWND hwnd, UINT uMsg, WPARAM wParam, L
             HDC hdc = BeginPaint(hwnd, &ps);
             RenderFrame();
             
-            // Copy from memory DC to window DC
+            // Copy from memory DC to window DC (only video area, leave space for controls)
             BitBlt(hdc, 0, 0, m_width, m_height, m_memDC, 0, 0, SRCCOPY);
             
             EndPaint(hwnd, &ps);
+            return true;
+        }
+
+        case WM_COMMAND: {
+            int id = LOWORD(wParam);
+            int code = HIWORD(wParam);
+            OnControlPanelCommand((HWND)lParam, id, code);
             return true;
         }
 
@@ -202,15 +216,20 @@ void PreviewWindowManager::Cleanup() {
         HidePreview();
     }
 
+    if (m_memDC) {
+        // Restore the original bitmap before deleting DC
+        if (m_oldBitmap) {
+            SelectObject(m_memDC, m_oldBitmap);
+            m_oldBitmap = nullptr;
+        }
+        DeleteDC(m_memDC);
+        m_memDC = nullptr;
+    }
+
     if (m_bitmap) {
         DeleteObject(m_bitmap);
         m_bitmap = nullptr;
         m_bitmapData = nullptr;
-    }
-
-    if (m_memDC) {
-        DeleteDC(m_memDC);
-        m_memDC = nullptr;
     }
 
     if (m_hwnd) {
@@ -259,8 +278,8 @@ bool PreviewWindowManager::CreatePreviewWindow(HINSTANCE hInstance) {
         }
     }
 
-    // Calculate window size including borders
-    RECT rect = { 0, 0, m_width, m_height };
+    // Calculate window size including borders and control panel
+    RECT rect = { 0, 0, m_width + CONTROL_PANEL_WIDTH, m_height };
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
     
     int windowWidth = rect.right - rect.left;
@@ -286,6 +305,128 @@ bool PreviewWindowManager::CreatePreviewWindow(HINSTANCE hInstance) {
     return true;
 }
 
+bool PreviewWindowManager::CreateControlPanel() {
+    if (!m_hwnd) return false;
+
+    // Create filter selection combo box
+    m_filterComboBox = CreateWindowExW(
+        0, L"COMBOBOX", nullptr,
+        WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+        m_width + 10, 10, CONTROL_PANEL_WIDTH - 20, 200,
+        m_hwnd, (HMENU)1001, m_hInstance, nullptr
+    );
+
+    if (!m_filterComboBox) return false;
+
+    // Add filter options
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"No Effects");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Face Filters");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Virtual Background");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Cartoon Effect");
+    SendMessageW(m_filterComboBox, CB_SETCURSEL, 0, 0);
+
+    // Create face filter controls
+    m_glassesCheckBox = CreateWindowExW(
+        0, L"BUTTON", L"Virtual Glasses",
+        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+        m_width + 10, 50, CONTROL_PANEL_WIDTH - 20, 20,
+        m_hwnd, (HMENU)1002, m_hInstance, nullptr
+    );
+
+    m_hatCheckBox = CreateWindowExW(
+        0, L"BUTTON", L"Funny Hat",
+        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+        m_width + 10, 75, CONTROL_PANEL_WIDTH - 20, 20,
+        m_hwnd, (HMENU)1003, m_hInstance, nullptr
+    );
+
+    m_speechBubbleCheckBox = CreateWindowExW(
+        0, L"BUTTON", L"Speech Bubble",
+        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+        m_width + 10, 100, CONTROL_PANEL_WIDTH - 20, 20,
+        m_hwnd, (HMENU)1004, m_hInstance, nullptr
+    );
+
+    // Speech bubble text input
+    CreateWindowExW(
+        0, L"STATIC", L"Speech Text:",
+        WS_CHILD | WS_VISIBLE,
+        m_width + 10, 125, CONTROL_PANEL_WIDTH - 20, 20,
+        m_hwnd, nullptr, m_hInstance, nullptr
+    );
+
+    m_speechBubbleEdit = CreateWindowExW(
+        WS_EX_CLIENTEDGE, L"EDIT", L"Hello Meeting!",
+        WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+        m_width + 10, 145, CONTROL_PANEL_WIDTH - 20, 25,
+        m_hwnd, (HMENU)1005, m_hInstance, nullptr
+    );
+
+    // Initially hide face filter controls
+    ShowWindow(m_glassesCheckBox, SW_HIDE);
+    ShowWindow(m_hatCheckBox, SW_HIDE);
+    ShowWindow(m_speechBubbleCheckBox, SW_HIDE);
+    ShowWindow(m_speechBubbleEdit, SW_HIDE);
+
+    return true;
+}
+
+void PreviewWindowManager::OnFilterSelectionChanged() {
+    if (!m_filterComboBox) return;
+
+    int selection = SendMessageW(m_filterComboBox, CB_GETCURSEL, 0, 0);
+    bool showFaceControls = (selection == 1); // Face Filters
+
+    // Show/hide face filter controls
+    ShowWindow(m_glassesCheckBox, showFaceControls ? SW_SHOW : SW_HIDE);
+    ShowWindow(m_hatCheckBox, showFaceControls ? SW_SHOW : SW_HIDE);
+    ShowWindow(m_speechBubbleCheckBox, showFaceControls ? SW_SHOW : SW_HIDE);
+    ShowWindow(m_speechBubbleEdit, showFaceControls ? SW_SHOW : SW_HIDE);
+
+    // Notify callback if set
+    if (m_filterCallback) {
+        std::string filterName;
+        switch (selection) {
+            case 0: filterName = "none"; break;
+            case 1: filterName = "face_filter"; break;
+            case 2: filterName = "virtual_background"; break;
+            case 3: filterName = "cartoon"; break;
+            default: filterName = "none"; break;
+        }
+        m_filterCallback(filterName);
+    }
+}
+
+void PreviewWindowManager::OnControlPanelCommand(HWND hwnd, int id, int code) {
+    if (code != BN_CLICKED && code != CBN_SELCHANGE) return;
+
+    switch (id) {
+        case 1001: // Filter combo box
+            if (code == CBN_SELCHANGE) {
+                OnFilterSelectionChanged();
+            }
+            break;
+
+        case 1002: // Glasses checkbox
+        case 1003: // Hat checkbox
+        case 1004: // Speech bubble checkbox
+            // These will be handled by the filter callback
+            if (m_filterCallback) {
+                // Get current speech bubble text
+                if (m_speechBubbleEdit) {
+                    wchar_t text[256];
+                    GetWindowTextW(m_speechBubbleEdit, text, 256);
+                    // Convert wide string to narrow string
+                    std::wstring wideText(text);
+                    std::string narrowText(wideText.begin(), wideText.end());
+                    std::string speechText = "speech_text:" + narrowText;
+                    m_filterCallback(speechText);
+                }
+            }
+            break;
+    }
+}
+
 void PreviewWindowManager::RenderFrame() {
     if (!m_frameCallback || !m_bitmapData) {
         return;
@@ -309,11 +450,11 @@ void PreviewWindowManager::RenderFrame() {
         
         // Handle different input formats
         if (frame.data.channels() == 3) {
-            // Convert BGR to RGB (OpenCV uses BGR, Windows DIB uses RGB)
-            cv::cvtColor(frame.data, displayFrame, cv::COLOR_BGR2RGB);
+            // OpenCV uses BGR, Windows DIB expects BGR - no conversion needed
+            frame.data.copyTo(displayFrame);
         } else if (frame.data.channels() == 1) {
-            // Convert grayscale to RGB
-            cv::cvtColor(frame.data, displayFrame, cv::COLOR_GRAY2RGB);
+            // Convert grayscale to BGR
+            cv::cvtColor(frame.data, displayFrame, cv::COLOR_GRAY2BGR);
         } else {
             frame.data.copyTo(displayFrame);
         }
@@ -356,8 +497,7 @@ void PreviewWindowManager::RenderFrame() {
     } catch (const std::exception& e) {
         // Fill with error color (red) on exception - handle stride properly
         std::wcerr << L"RenderFrame exception: " << e.what() << std::endl;
-        
-        int stride = ((m_width * 3 + 3) & ~3); // 4-byte alignment
+        int stride = ((m_width * 3 + 3) & ~3);
         unsigned char* pixels = (unsigned char*)m_bitmapData;
         
         for (int y = 0; y < m_height; ++y) {

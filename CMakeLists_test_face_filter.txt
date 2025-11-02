@@ -1,0 +1,19 @@
+cmake_minimum_required(VERSION 3.20)
+
+# Test Face Filter Processor
+add_executable(test_face_filter
+    test_face_filter.cpp
+)
+
+target_include_directories(test_face_filter PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_face_filter
+    AIProcessor
+    ${OpenCV_LIBS}
+)
+
+# Copy test assets
+configure_file(${CMAKE_SOURCE_DIR}/assets/glasses.png ${CMAKE_BINARY_DIR}/glasses.png COPYONLY)
+configure_file(${CMAKE_SOURCE_DIR}/assets/funny_hat.png ${CMAKE_BINARY_DIR}/funny_hat.png COPYONLY)

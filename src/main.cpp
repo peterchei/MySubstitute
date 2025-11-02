@@ -8,6 +8,7 @@
 #include "capture/camera_capture.h"
 #include "ai/ai_processor.h"
 #include "ai/passthrough_processor.h"
+#include "ai/face_filter_processor.h"
 #include "virtual_camera/virtual_camera_filter.h"
 #include "virtual_camera/virtual_camera_manager.h"
 #include "virtual_camera/camera_diagnostics.h"
@@ -21,10 +22,59 @@
 // Global variables
 std::unique_ptr<SystemTrayManager> g_trayManager;
 std::unique_ptr<CameraCapture> g_camera;
-std::unique_ptr<PassthroughProcessor> g_processor;
+std::unique_ptr<AIProcessor> g_processor;
 std::unique_ptr<VirtualCameraFilter> g_virtualCamera;
 std::unique_ptr<VirtualCameraManager> g_virtualCameraManager;
 std::unique_ptr<PreviewWindowManager> g_previewManager;
+
+// Filter change callback
+void OnFilterChanged(const std::string& filterName) {
+    std::cout << "[OnFilterChanged] Filter changed to: '" << filterName << "'" << std::endl;
+
+    if (!g_processor) {
+        std::cout << "[OnFilterChanged] No processor available" << std::endl;
+        return;
+    }
+
+    if (filterName == "none") {
+        // Switch to passthrough processor
+        g_processor = std::make_unique<PassthroughProcessor>();
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize PassthroughProcessor" << std::endl;
+        }
+    } else if (filterName == "face_filter") {
+        // Switch to face filter processor
+        g_processor = std::make_unique<FaceFilterProcessor>();
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize FaceFilterProcessor, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "virtual_background") {
+        // TODO: Implement virtual background processor
+        g_processor = std::make_unique<PassthroughProcessor>();
+        g_processor->Initialize();
+        std::cout << "[OnFilterChanged] Virtual background not implemented, using passthrough" << std::endl;
+    } else if (filterName == "cartoon") {
+        // TODO: Implement cartoon processor
+        g_processor = std::make_unique<PassthroughProcessor>();
+        g_processor->Initialize();
+        std::cout << "[OnFilterChanged] Cartoon not implemented, using passthrough" << std::endl;
+    } else if (filterName.find("speech_text:") == 0) {
+        // Update speech bubble text
+        if (auto faceFilter = dynamic_cast<FaceFilterProcessor*>(g_processor.get())) {
+            std::string text = filterName.substr(12); // Remove "speech_text:" prefix
+            faceFilter->SetSpeechBubbleText(text);
+            std::cout << "[OnFilterChanged] Set speech bubble text to: " << text << std::endl;
+        }
+    } else {
+        std::cout << "[OnFilterChanged] Unknown filter: " << filterName << std::endl;
+    }
+}
 bool g_running = true;
 Frame g_lastProcessedFrame;  // Store the latest processed frame for preview
 Frame g_lastCameraFrame;     // Store the latest camera frame
@@ -138,7 +188,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     // Initialize preview window
     g_previewManager = std::make_unique<PreviewWindowManager>();
-    if (!g_previewManager->Initialize(hInstance, GetLatestProcessedFrame)) {
+    if (!g_previewManager->Initialize(hInstance, GetLatestProcessedFrame, OnFilterChanged)) {
         MessageBoxA(nullptr, "Failed to initialize preview window", "Warning", MB_OK | MB_ICONWARNING);
         // Continue without preview - not critical
     }
@@ -148,8 +198,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     
     // Generate a test frame with caption to demonstrate functionality
     if (g_processor) {
-        g_processor->SetCaptionText("MySubstitute Active ");
-        g_processor->SetCaptionEnabled(true);
+        // Try to cast to PassthroughProcessor for caption methods
+        if (auto passthrough = dynamic_cast<PassthroughProcessor*>(g_processor.get())) {
+            passthrough->SetCaptionText("MySubstitute Active ");
+            passthrough->SetCaptionEnabled(true);
+        }
     }
 
     // Main message loop
@@ -208,6 +261,8 @@ bool InitializeComponents() {
                 g_virtualCameraManager->StartVirtualCamera();
                 std::cout << "[Main] ✓ Virtual camera auto-activated" << std::endl;
             }
+        } else {
+            std::cout << "[Init] Failed to start camera capture" << std::endl;
         }
 
         return true;
