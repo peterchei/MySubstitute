@@ -12,6 +12,9 @@
 #include "virtual_camera/virtual_camera_manager.h"
 #include "virtual_camera/camera_diagnostics.h"
 #include "virtual_camera/simple_virtual_camera_new.h"
+#include "virtual_camera/obs_virtual_camera_helper.h"
+#include "virtual_camera/simple_registry_virtual_camera.h"
+#include "virtual_camera/media_foundation_camera.h"
 #include "service/background_service.h"
 #include "ui/system_tray_manager.h"
 #include "ui/preview_window_manager.h"
@@ -51,6 +54,45 @@ Frame GetLatestProcessedFrame();  // Callback for preview window
 void OnCameraFrame(const Frame& frame);  // Camera frame callback
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    // Check for test command line argument
+    if (lpCmdLine && strstr(lpCmdLine, "--test-virtual-camera")) {
+        // Test mode - run virtual camera registration test
+        AllocConsole();
+        freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
+        freopen_s((FILE**)stderr, "CONOUT$", "w", stderr);
+        freopen_s((FILE**)stdin, "CONIN$", "r", stdin);
+        
+        std::wcout << L"🧪 MySubstitute Virtual Camera Test Mode" << std::endl;
+        std::wcout << L"=======================================" << std::endl;
+        
+        CoInitialize(nullptr);
+        
+        std::wcout << L"\n📊 Initial Status:" << std::endl;
+        SimpleRegistryVirtualCamera::ShowDetailedStatus();
+        
+        std::wcout << L"\n🔄 Attempting Media Foundation registration..." << std::endl;
+        if (SUCCEEDED(MediaFoundationVirtualCamera::RegisterVirtualCamera())) {
+            std::wcout << L"✅ Media Foundation registration completed!" << std::endl;
+            MediaFoundationVirtualCamera::ShowStatus();
+        } else {
+            std::wcout << L"❌ Media Foundation registration failed!" << std::endl;
+            std::wcout << L"\n� Trying fallback registry approach..." << std::endl;
+            if (SimpleRegistryVirtualCamera::RegisterWithAdminCheck()) {
+                std::wcout << L"✅ Fallback registration completed!" << std::endl;
+                SimpleRegistryVirtualCamera::ShowDetailedStatus();
+            } else {
+                std::wcout << L"❌ All registration methods failed!" << std::endl;
+            }
+        }
+        
+        std::wcout << L"\nPress Enter to exit..." << std::endl;
+        std::cin.get();
+        
+        CoUninitialize();
+        FreeConsole();
+        return 0;
+    }
+
     // Initialize COM for DirectShow
     HRESULT hr = CoInitialize(nullptr);
     if (FAILED(hr)) {
@@ -343,35 +385,99 @@ void OnReleaseCamera() {
 }
 
 void OnRegisterVirtualCamera() {
-    std::cout << "[Main] 🔍 Running camera diagnostics and virtual camera setup..." << std::endl;
+    std::cout << "[Main] 🔍 Analyzing virtual camera options..." << std::endl;
     
-    // First run diagnostics to see what we have
-    CameraDiagnostics::ShowDiagnosticsResults();
+    // Check if OBS Virtual Camera is available first
+    if (OBSVirtualCameraHelper::IsOBSVirtualCameraInstalled()) {
+        // OBS is installed - this is still the best option!
+        MessageBoxA(nullptr,
+            "🎉 EXCELLENT! OBS Virtual Camera Detected\n\n"
+            "✅ OBS Studio with virtual camera is installed\n"
+            "✅ This is the BEST solution for virtual cameras\n\n"
+            "📋 How to use:\n"
+            "1. Open OBS Studio\n"
+            "2. Add your camera as a source\n"
+            "3. Click 'Start Virtual Camera' in OBS\n"
+            "4. 'OBS Virtual Camera' will appear in all apps\n"
+            "5. MySubstitute will enhance your real camera feed\n\n"
+            "🚀 This setup provides professional-grade virtual camera functionality!",
+            "OBS Virtual Camera Found!", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
     
-    // Then try to register our simple virtual camera
-    if (g_simpleVirtualCamera) {
-        if (g_simpleVirtualCamera->RegisterWithSystem()) {
+    // No OBS - try Media Foundation virtual camera first
+    std::wcout << L"[Main] OBS not found, attempting Media Foundation virtual camera..." << std::endl;
+    
+    if (SUCCEEDED(MediaFoundationVirtualCamera::RegisterVirtualCamera())) {
+        MessageBoxA(nullptr,
+            "🎉 SUCCESS! Media Foundation Virtual Camera Registered\n\n"
+            "✅ MySubstitute Virtual Camera created using Windows Media Foundation\n"
+            "✅ Should appear in Camera app and other applications\n\n"
+            "📋 Test now: Open Camera app and look for 'MySubstitute Virtual Camera'\n"
+            "📋 Also test in browsers (Chrome, Firefox, Edge) for video calls\n\n"
+            "⚡ This uses modern Windows Media Foundation APIs for better compatibility!",
+            "Virtual Camera Success!", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    
+    // Media Foundation failed - try fallback registry approach
+    std::wcout << L"[Main] Media Foundation failed, trying fallback registry method..." << std::endl;
+    
+    if (SimpleRegistryVirtualCamera::RegisterWithAdminCheck()) {
+        // Registration successful - show detailed status
+        SimpleRegistryVirtualCamera::ShowDetailedStatus();
+        
+        // Test visibility
+        if (SimpleRegistryVirtualCamera::TestDeviceVisibility()) {
             MessageBoxA(nullptr,
-                "🎉 Virtual Camera Registration Successful!\n\n"
-                "✅ MySubstitute Virtual Camera is now available\n\n"
-                "📋 Next steps:\n"
-                "1. Right-click → 'Start Virtual Camera'\n"
-                "2. Open Camera app, Zoom, or Teams\n"
-                "3. Look for 'MySubstitute Virtual Camera' in the camera list\n\n"
-                "💡 If you don't see it, try installing OBS Studio which includes\n"
-                "a proven virtual camera infrastructure we can use.",
-                "Registration Complete", MB_OK | MB_ICONINFORMATION);
+                "🎉 SUCCESS! Virtual Camera Appears in Device List\n\n"
+                "✅ MySubstitute Virtual Camera is now visible in:\n"
+                "   • Windows Camera app\n"
+                "   • Zoom, Teams, Discord, Skype  \n"
+                "   • Chrome, Edge, Firefox browsers\n"
+                "   • All DirectShow-compatible applications\n\n"
+                "⚠️ NOTE: This is a registry-based virtual camera\n"
+                "• Device appears in lists but needs actual video source\n"
+                "• Use 'Start Virtual Camera' to begin streaming\n"
+                "• For full functionality, consider OBS Studio\n\n"
+                "📋 Test now: Open Camera app and look for 'MySubstitute Virtual Camera'",
+                "Virtual Camera Visible!", MB_OK | MB_ICONINFORMATION);
         } else {
             MessageBoxA(nullptr,
-                "⚠️ Virtual Camera Registration Incomplete\n\n"
-                "We couldn't create a full virtual camera driver, but MySubstitute\n"
-                "can still process your camera feed.\n\n"
-                "💡 Recommended solution:\n"
-                "• Install OBS Studio (free) which includes virtual camera support\n"
-                "• MySubstitute can then use OBS's virtual camera infrastructure\n"
-                "• This is the most reliable approach for virtual cameras\n\n"
-                "Alternative: Use MySubstitute to process your main camera feed.",
-                "Registration Info", MB_OK | MB_ICONINFORMATION);
+                "⚠️ Registry Entries Created - Testing Needed\n\n"
+                "✅ Virtual camera registered in Windows registry\n"
+                "❓ Device visibility needs verification\n\n"
+                "📋 Test steps:\n"
+                "1. Open Windows Camera app\n"
+                "2. Look for 'MySubstitute Virtual Camera'\n"
+                "3. If not visible, try restarting Camera app\n"
+                "4. May need to restart other video applications\n\n"
+                "💡 If still not working, OBS Studio is recommended\n"
+                "for guaranteed virtual camera functionality",
+                "Registration Complete", MB_OK | MB_ICONINFORMATION);
+        }
+    } else {
+        // Registration failed - likely admin rights issue
+        int result = MessageBoxA(nullptr,
+            "❌ Virtual Camera Registration Failed\n\n"
+            "This usually happens when:\n"
+            "• Not running as Administrator (most common)\n"
+            "• Windows registry restrictions\n"
+            "• Antivirus blocking registry changes\n\n"
+            "💡 SOLUTIONS:\n\n"
+            "1️⃣ RUN AS ADMINISTRATOR (Recommended)\n"
+            "• Right-click MySubstitute.exe\n"
+            "• Select 'Run as administrator'\n"
+            "• Try registration again\n\n"
+            "2️⃣ USE OBS STUDIO (Alternative)\n"
+            "• Professional virtual camera solution\n"
+            "• No admin rights required\n"
+            "• Works with all applications\n\n"
+            "🔗 Download OBS Studio now?",
+            "Registration Failed", MB_YESNO | MB_ICONWARNING);
+        
+        if (result == IDYES) {
+            OBSVirtualCameraHelper::ShowOBSInstallationGuide();
         }
     }
 }
@@ -402,68 +508,53 @@ void OnUnregisterVirtualCamera() {
 void OnStartVirtualCamera() {
     std::cout << "[Main] Starting virtual camera..." << std::endl;
     
-    // Try our simple virtual camera first
+    // Check for OBS Virtual Camera first (best option)
+    if (OBSVirtualCameraHelper::IsOBSVirtualCameraInstalled()) {
+        if (OBSVirtualCameraHelper::StartOBSVirtualCamera()) {
+            if (g_trayManager) {
+                g_trayManager->UpdateTooltip(L"MySubstitute - OBS Integration Active");
+            }
+            return;
+        }
+    }
+    
+    // Try our simple virtual camera
     if (g_simpleVirtualCamera) {
         if (!g_simpleVirtualCamera->IsRegistered()) {
             MessageBoxA(nullptr,
-                "⚠️ Virtual Camera Not Registered\n\n"
-                "Please register the virtual camera first using:\n"
-                "'📹 Register Virtual Camera' from the menu.\n\n"
-                "💡 Or install OBS Studio for reliable virtual camera support.",
-                "Not Registered", MB_OK | MB_ICONWARNING);
+                "⚠️ No Virtual Camera Available\n\n"
+                "No virtual camera infrastructure was found.\n\n"
+                "💡 RECOMMENDED SOLUTION:\n"
+                "Install OBS Studio (free) which includes a proven\n"
+                "virtual camera that works with all applications.\n\n"
+                "🔗 Download: https://obsproject.com/\n\n"
+                "Alternative: Try 'Register Virtual Camera' first,\n"
+                "but OBS is the most reliable option.",
+                "Virtual Camera Needed", MB_OK | MB_ICONINFORMATION);
             return;
         }
         
         if (g_simpleVirtualCamera->Start()) {
             if (g_trayManager) {
-                g_trayManager->UpdateTooltip(L"MySubstitute - Virtual Camera Active");
+                g_trayManager->UpdateTooltip(L"MySubstitute - Basic Virtual Camera");
             }
             
             MessageBoxA(nullptr,
-                "🎬 Virtual Camera Started!\n\n"
-                "✅ MySubstitute virtual camera is now running\n\n"
-                "📋 How to use:\n"
-                "• Open Camera app, Zoom, Teams, or Discord\n"
-                "• Look for 'MySubstitute Virtual Camera' in camera list\n"
-                "• Select it to use AI-processed video\n\n"
-                "⚡ Make sure to also start your real camera for input!",
-                "Virtual Camera Active", MB_OK | MB_ICONINFORMATION);
+                "⚠️ Basic Virtual Camera Started\n\n"
+                "✅ MySubstitute virtual camera is running\n"
+                "❗ May not work with all applications\n\n"
+                "📋 To test:\n"
+                "• Open Camera app or Zoom\n"
+                "• Look for 'MySubstitute Virtual Camera'\n"
+                "• If not visible, install OBS Studio instead\n\n"
+                "💡 OBS Studio provides much more reliable virtual camera support.",
+                "Basic Virtual Camera", MB_OK | MB_ICONWARNING);
             return;
         }
     }
     
-    // Fallback to old virtual camera manager
-    if (g_virtualCameraManager) {
-        if (!g_virtualCameraManager->IsRegistered()) {
-            MessageBoxA(nullptr,
-                "⚠️ Virtual Camera Not Available\n\n"
-                "No virtual camera infrastructure was found.\n\n"
-                "💡 Recommended solution:\n"
-                "• Install OBS Studio (free) for virtual camera support\n"
-                "• Use MySubstitute to enhance your main camera feed\n"
-                "• Virtual cameras require special drivers or software",
-                "Not Available", MB_OK | MB_ICONWARNING);
-            return;
-        }
-        
-        if (g_virtualCameraManager->StartVirtualCamera()) {
-            if (g_trayManager) {
-                g_trayManager->UpdateTooltip(L"MySubstitute - Virtual Camera Active");
-            }
-            
-            MessageBoxA(nullptr,
-                "🎬 Virtual Camera Started!\n\n"
-                "MySubstitute is now streaming AI-processed video.\n"
-                "Open any camera application to select 'MySubstitute Virtual Camera'.\n\n"
-                "Make sure your real camera is also started to provide video input.",
-                "Virtual Camera Active", MB_OK | MB_ICONINFORMATION);
-        } else {
-            MessageBoxA(nullptr,
-                "❌ Failed to Start Virtual Camera\n\n"
-                "Please check that the camera is registered and try again.",
-                "Start Failed", MB_OK | MB_ICONERROR);
-        }
-    }
+    // No virtual camera available
+    OBSVirtualCameraHelper::ShowOBSInstallationGuide();
 }
 
 void OnStopVirtualCamera() {

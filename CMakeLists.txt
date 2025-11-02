@@ -64,6 +64,9 @@ set(SOURCES
     src/virtual_camera/virtual_camera_manager.cpp
     src/virtual_camera/camera_diagnostics.cpp
     src/virtual_camera/simple_virtual_camera_new.cpp
+    src/virtual_camera/obs_virtual_camera_helper.cpp
+    src/virtual_camera/simple_registry_virtual_camera.cpp
+    src/virtual_camera/media_foundation_camera.cpp
     src/virtual_camera/virtual_camera_registry.cpp
     src/virtual_camera/directshow_source_filter.cpp
     src/service/background_service.cpp

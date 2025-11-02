@@ -1,0 +1,14 @@
+cmake_minimum_required(VERSION 3.15)
+project(TestVirtualCamera)
+
+# Set C++ standard to C++17
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_executable(test_vc 
+    test_virtual_camera.cpp
+    src/virtual_camera/simple_registry_virtual_camera.cpp
+)
+
+target_include_directories(test_vc PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(test_vc shell32 advapi32 ole32)
