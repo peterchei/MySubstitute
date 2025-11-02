@@ -39,6 +39,9 @@ bool CartoonFilterProcessor::Initialize()
 void CartoonFilterProcessor::Cleanup()
 {
     std::cout << "[CartoonFilterProcessor] Cleanup called" << std::endl;
+    m_previousEdges.release();
+    m_previousFrame.release();
+    m_previousQuantized.release();
 }
 
 Frame CartoonFilterProcessor::ProcessFrame(const Frame& input)
@@ -91,10 +94,11 @@ void CartoonFilterProcessor::ApplySimpleCartoon(cv::Mat& frame)
         // Apply bilateral filtering for smooth colors
         cv::Mat smoothed = frame.clone();
         
-        // Multiple passes for smoother, more cartoon-like appearance
+        // Multiple passes with moderate parameters for better quality
         for (int i = 0; i < m_smoothingLevel; ++i) {
             cv::Mat temp;
-            cv::bilateralFilter(smoothed, temp, 8, 60, 60);
+            // Use smaller sigma for more detailed smoothing
+            cv::bilateralFilter(smoothed, temp, 7, 40, 40);
             temp.copyTo(smoothed);
         }
 
@@ -111,13 +115,22 @@ void CartoonFilterProcessor::ApplySimpleCartoon(cv::Mat& frame)
 
         // More aggressive color quantization for cartoon look
         cv::Mat quantized = QuantizeColors(smoothed, 6);  // Fewer colors = more cartoon
+        
+        // Smooth color transitions between frames
+        if (!m_previousQuantized.empty() && quantized.size() == m_previousQuantized.size()) {
+            cv::addWeighted(quantized, 0.6, m_previousQuantized, 0.4, 0, quantized);
+        }
+        quantized.copyTo(m_previousQuantized);
 
         // Edge detection
         cv::Mat edges = DetectEdges(smoothed);
+        
+        // Stabilize edges across frames to reduce flickering
+        cv::Mat stableEdges = StabilizeEdges(edges);
 
         // Apply edges
-        if (!edges.empty()) {
-            CombineEdgesWithColors(quantized, edges);
+        if (!stableEdges.empty()) {
+            CombineEdgesWithColors(quantized, stableEdges);
         }
 
         if (!quantized.empty()) {
@@ -139,7 +152,8 @@ void CartoonFilterProcessor::ApplyDetailedCartoon(cv::Mat& frame)
         cv::Mat smoothed = frame.clone();
         for (int i = 0; i < m_smoothingLevel; ++i) {
             cv::Mat temp;
-            cv::bilateralFilter(smoothed, temp, 10, 70, 70);  // Stronger smoothing
+            // Smaller sigma for more detail preservation
+            cv::bilateralFilter(smoothed, temp, 8, 50, 50);
             temp.copyTo(smoothed);
         }
 
@@ -156,12 +170,21 @@ void CartoonFilterProcessor::ApplyDetailedCartoon(cv::Mat& frame)
 
         // Aggressive color reduction
         cv::Mat quantized = QuantizeColors(smoothed, 5);  // Very few colors
+        
+        // Smooth color transitions between frames
+        if (!m_previousQuantized.empty() && quantized.size() == m_previousQuantized.size()) {
+            cv::addWeighted(quantized, 0.6, m_previousQuantized, 0.4, 0, quantized);
+        }
+        quantized.copyTo(m_previousQuantized);
 
         // Edge detection
         cv::Mat edges = DetectEdges(smoothed);
+        
+        // Stabilize edges across frames to reduce flickering
+        cv::Mat stableEdges = StabilizeEdges(edges);
 
-        if (!edges.empty() && !quantized.empty()) {
-            CombineEdgesWithColors(quantized, edges);
+        if (!stableEdges.empty() && !quantized.empty()) {
+            CombineEdgesWithColors(quantized, stableEdges);
         }
 
         if (!quantized.empty()) {
@@ -183,7 +206,8 @@ void CartoonFilterProcessor::ApplyAnimeStyle(cv::Mat& frame)
         cv::Mat smoothed = frame.clone();
         for (int i = 0; i < m_smoothingLevel; ++i) {
             cv::Mat temp;
-            cv::bilateralFilter(smoothed, temp, 11, 80, 80);  // Strong smoothing
+            // Use multiple passes with smaller sigma instead of large single pass
+            cv::bilateralFilter(smoothed, temp, 9, 60, 60);
             temp.copyTo(smoothed);
         }
 
@@ -200,12 +224,21 @@ void CartoonFilterProcessor::ApplyAnimeStyle(cv::Mat& frame)
 
         // Extreme color reduction for anime palette
         cv::Mat quantized = QuantizeColors(smoothed, 4);  // Very few colors for anime style
+        
+        // Smooth color transitions between frames
+        if (!m_previousQuantized.empty() && quantized.size() == m_previousQuantized.size()) {
+            cv::addWeighted(quantized, 0.6, m_previousQuantized, 0.4, 0, quantized);
+        }
+        quantized.copyTo(m_previousQuantized);
 
         // Edge detection
         cv::Mat edges = DetectEdges(smoothed);
+        
+        // Stabilize edges across frames to reduce flickering
+        cv::Mat stableEdges = StabilizeEdges(edges);
 
-        if (!edges.empty() && !quantized.empty()) {
-            CombineEdgesWithColors(quantized, edges);
+        if (!stableEdges.empty() && !quantized.empty()) {
+            CombineEdgesWithColors(quantized, stableEdges);
         }
 
         if (!quantized.empty()) {
@@ -214,6 +247,61 @@ void CartoonFilterProcessor::ApplyAnimeStyle(cv::Mat& frame)
     } catch (const std::exception& e) {
         std::cerr << "[CartoonFilterProcessor] ApplyAnimeStyle error: " << e.what() << std::endl;
     }
+}
+
+cv::Mat CartoonFilterProcessor::StabilizeEdges(const cv::Mat& currentEdges)
+{
+    // First frame - just return current edges
+    if (m_previousEdges.empty()) {
+        m_previousEdges = currentEdges.clone();
+        return currentEdges.clone();
+    }
+
+    if (currentEdges.size() != m_previousEdges.size()) {
+        m_previousEdges = currentEdges.clone();
+        return currentEdges.clone();
+    }
+
+    // Use hysteresis-like approach for more stable edges
+    // Keep edges that are strong in current frame OR were present in previous frame
+    cv::Mat stabilized = cv::Mat::ones(currentEdges.size(), CV_8UC1) * 255;  // Start with "no edge"
+    
+    for (int y = 0; y < currentEdges.rows; ++y) {
+        const uint8_t* currRow = currentEdges.ptr<uint8_t>(y);
+        const uint8_t* prevRow = m_previousEdges.ptr<uint8_t>(y);
+        uint8_t* stabRow = stabilized.ptr<uint8_t>(y);
+        
+        for (int x = 0; x < currentEdges.cols; ++x) {
+            uint8_t currVal = currRow[x];
+            uint8_t prevVal = prevRow[x];
+            
+            // Strong hysteresis: keep edges if:
+            // 1. Strong edge in current frame (< 100), OR
+            // 2. Edge in previous frame AND reasonable edge in current (< 150)
+            if (currVal < 100) {
+                // Strong current edge - always keep
+                stabRow[x] = currVal;
+            } else if (currVal < 150 && prevVal < 200) {
+                // Moderate current edge and previous edge present
+                stabRow[x] = cv::saturate_cast<uint8_t>((currVal + prevVal) / 2);
+            } else if (prevVal < 150) {
+                // Weak current but strong previous edge - propagate it
+                stabRow[x] = cv::saturate_cast<uint8_t>(prevVal * 0.9f);
+            } else {
+                // No significant edge
+                stabRow[x] = 255;
+            }
+        }
+    }
+    
+    // Dilate slightly to fill small gaps and make edges more continuous
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));
+    cv::dilate(stabilized, stabilized, kernel, cv::Point(-1, -1), 1);
+    
+    // Store current for next frame
+    stabilized.copyTo(m_previousEdges);
+    
+    return stabilized;
 }
 
 cv::Mat CartoonFilterProcessor::DetectEdges(const cv::Mat& src)
@@ -238,8 +326,9 @@ cv::Mat CartoonFilterProcessor::DetectEdges(const cv::Mat& src)
     cv::Laplacian(blurred, laplacian, CV_16S, 1);
     cv::convertScaleAbs(laplacian, laplacian);
 
-    // Apply threshold to get binary edges - lowered threshold for better edge preservation
-    int threshold = std::max(10, m_edgeThreshold / 5);
+    // Use very low threshold for more responsive edges
+    // Lower values = more edge detection, but more noise
+    int threshold = std::max(5, m_edgeThreshold / 8);  // Even lower threshold
     cv::threshold(laplacian, edges, threshold, 255, cv::THRESH_BINARY);
 
     // Invert: we want white areas where edges are (for masking)

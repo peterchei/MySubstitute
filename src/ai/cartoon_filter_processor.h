@@ -48,6 +48,12 @@ private:
     cv::Mat DetectEdges(const cv::Mat& src);
     cv::Mat QuantizeColors(const cv::Mat& src, int levels);
     void CombineEdgesWithColors(cv::Mat& frame, const cv::Mat& edges);
+    
+    // Temporal coherence for stable edges
+    cv::Mat m_previousEdges;
+    cv::Mat m_previousFrame;
+    cv::Mat StabilizeEdges(const cv::Mat& currentEdges);
+    cv::Mat m_previousQuantized;  // Store previous quantized frame for smoother transitions
 #endif
 
     // Parameters
