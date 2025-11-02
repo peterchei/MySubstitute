@@ -14,6 +14,7 @@ PassthroughProcessor::PassthroughProcessor()
     , m_captionColor(255, 255, 255)  // White
     , m_captionScale(0.8)
     , m_captionThickness(2)
+    , m_frameCounter(0)
 {
 }
 
@@ -163,8 +164,25 @@ void PassthroughProcessor::AddCaption(cv::Mat& frame) {
         return;
     }
     
+    // Generate current timestamp with high precision
+    auto now = std::chrono::high_resolution_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()) % 1000;
+    
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&time_t), "%H:%M:%S");
+    ss << "." << std::setfill('0') << std::setw(3) << ms.count();
+    ss << std::setfill('0') << std::setw(3) << us.count();  // Add microseconds for more precision
+    
+    // Increment frame counter for this frame
+    uint64_t currentFrame = ++m_frameCounter;
+    
+    // Append timestamp and frame number to caption text
+    std::string fullCaptionText = m_captionText + " - " + ss.str() + " (Frame #" + std::to_string(currentFrame) + ")";
+    
     // Calculate text size for positioning
-    cv::Size textSize = cv::getTextSize(m_captionText, cv::FONT_HERSHEY_SIMPLEX, 
+    cv::Size textSize = cv::getTextSize(fullCaptionText, cv::FONT_HERSHEY_SIMPLEX, 
                                        m_captionScale, m_captionThickness, nullptr);
     
     // Position at bottom center by default, or use custom position
@@ -187,8 +205,8 @@ void PassthroughProcessor::AddCaption(cv::Mat& frame) {
     cv::rectangle(overlay, bg_p1, bg_p2, cv::Scalar(0, 0, 0), -1);
     cv::addWeighted(frame, 0.7, overlay, 0.3, 0, frame);
     
-    // Add the caption text
-    cv::putText(frame, m_captionText, position, cv::FONT_HERSHEY_SIMPLEX, 
+    // Add the caption text with timestamp
+    cv::putText(frame, fullCaptionText, position, cv::FONT_HERSHEY_SIMPLEX, 
                m_captionScale, m_captionColor, m_captionThickness);
 #endif
 }

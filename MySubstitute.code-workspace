@@ -4,5 +4,13 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"files.associations": {
+			"iterator": "cpp",
+			"xhash": "cpp",
+			"xtree": "cpp",
+			"xutility": "cpp",
+			"chrono": "cpp"
+		}
+	}
 }

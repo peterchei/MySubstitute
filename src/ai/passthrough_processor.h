@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ai_processor.h"
+#include <atomic>
 
 /**
  * Passthrough processor with configurable overlay features
@@ -45,4 +46,7 @@ private:
     cv::Scalar m_captionColor;
     double m_captionScale;
     int m_captionThickness;
+    
+    // Frame tracking
+    mutable std::atomic<uint64_t> m_frameCounter;
 };

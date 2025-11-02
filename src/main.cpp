@@ -148,7 +148,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     
     // Generate a test frame with caption to demonstrate functionality
     if (g_processor) {
-        g_processor->SetCaptionText("MySubstitute Active - Test Caption");
+        g_processor->SetCaptionText("MySubstitute Active ");
         g_processor->SetCaptionEnabled(true);
     }
 

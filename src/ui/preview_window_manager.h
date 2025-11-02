@@ -103,7 +103,7 @@ private:
     void CenterWindow();
     
     // Constants
-    static const int DEFAULT_WIDTH = 270;   // Mobile phone aspect ratio
+    static const int DEFAULT_WIDTH = 640;   // Match virtual camera resolution
     static const int DEFAULT_HEIGHT = 480;
     static const UINT TIMER_ID = 1;
     static const UINT WM_RENDER_FRAME = WM_USER + 100;
