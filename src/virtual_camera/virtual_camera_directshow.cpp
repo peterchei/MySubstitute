@@ -14,6 +14,9 @@
 // Static frame rate (30 FPS)
 const REFERENCE_TIME FPS_30 = UNITS / 30;
 
+// Shared memory name (same as SimpleVirtualCamera)
+const wchar_t* MySubstituteVirtualCameraFilter::SHARED_MEMORY_NAME = L"MySubstituteVirtualCameraFrames";
+
 //=============================================================================
 // MySubstituteVirtualCameraFilter Implementation
 //=============================================================================
@@ -23,17 +26,25 @@ MySubstituteVirtualCameraFilter::MySubstituteVirtualCameraFilter() :
     m_State(State_Stopped),
     m_pClock(nullptr),
     m_pGraph(nullptr),
-    m_pOutputPin(nullptr)
+    m_pOutputPin(nullptr),
+    m_sharedMemory(nullptr),
+    m_sharedBuffer(nullptr)
 {
     InitializeCriticalSection(&m_FilterLock);
     wcscpy_s(m_wszName, L"MySubstitute Virtual Camera");
     
     // Create output pin
     m_pOutputPin = new MySubstituteOutputPin(this);
+    
+    // Initialize shared memory for inter-process communication
+    CreateSharedMemory();
 }
 
 MySubstituteVirtualCameraFilter::~MySubstituteVirtualCameraFilter()
 {
+    // Cleanup shared memory
+    CleanupSharedMemory();
+    
     if (m_pOutputPin) {
         delete m_pOutputPin;
     }
@@ -340,6 +351,13 @@ void MySubstituteVirtualCameraFilter::UpdateFrame(const Frame& frame)
 
 Frame MySubstituteVirtualCameraFilter::GetLatestFrame()
 {
+    // Try to read from shared memory first (from main process)
+    Frame sharedFrame = ReadFrameFromSharedMemory();
+    if (!sharedFrame.data.empty()) {
+        return sharedFrame;
+    }
+    
+    // Fallback to local frame data
     std::lock_guard<std::mutex> lock(m_frameMutex);
     return m_latestFrame;
 }
@@ -1287,4 +1305,100 @@ STDMETHODIMP MySubstituteMediaTypeEnum::Clone(IEnumMediaTypes **ppEnum)
     *ppEnum = new MySubstituteMediaTypeEnum(m_pPin);
     (*ppEnum)->Skip(m_Position);
     return S_OK;
+}
+
+//=============================================================================
+// MySubstituteVirtualCameraFilter - Shared Memory Helper Methods
+//=============================================================================
+
+bool MySubstituteVirtualCameraFilter::CreateSharedMemory()
+{
+    // Try to open existing shared memory (created by main process)
+    m_sharedMemory = OpenFileMappingW(
+        FILE_MAP_ALL_ACCESS,
+        FALSE,
+        SHARED_MEMORY_NAME
+    );
+    
+    if (m_sharedMemory == nullptr) {
+        // If no existing memory, create it ourselves (fallback)
+        m_sharedMemory = CreateFileMappingW(
+            INVALID_HANDLE_VALUE,
+            nullptr,
+            PAGE_READWRITE,
+            0,
+            SHARED_BUFFER_SIZE,
+            SHARED_MEMORY_NAME
+        );
+    }
+    
+    if (m_sharedMemory == nullptr) {
+        return false;
+    }
+    
+    m_sharedBuffer = MapViewOfFile(
+        m_sharedMemory,
+        FILE_MAP_ALL_ACCESS,
+        0,
+        0,
+        SHARED_BUFFER_SIZE
+    );
+    
+    if (m_sharedBuffer == nullptr) {
+        CloseHandle(m_sharedMemory);
+        m_sharedMemory = nullptr;
+        return false;
+    }
+    
+    return true;
+}
+
+void MySubstituteVirtualCameraFilter::CleanupSharedMemory()
+{
+    if (m_sharedBuffer) {
+        UnmapViewOfFile(m_sharedBuffer);
+        m_sharedBuffer = nullptr;
+    }
+    
+    if (m_sharedMemory) {
+        CloseHandle(m_sharedMemory);
+        m_sharedMemory = nullptr;
+    }
+}
+
+Frame MySubstituteVirtualCameraFilter::ReadFrameFromSharedMemory()
+{
+    Frame frame;
+    
+    if (!m_sharedBuffer) {
+        return frame; // Empty frame
+    }
+    
+#if defined(HAVE_OPENCV) && (HAVE_OPENCV == 1)
+    try {
+        // Shared memory contains RGB24 data (640x480x3)
+        int width = 640;
+        int height = 480;
+        int channels = 3;
+        
+        // Create OpenCV Mat from shared memory data
+        cv::Mat rgbMat(height, width, CV_8UC3, m_sharedBuffer);
+        
+        // Convert RGB to BGR (OpenCV format)
+        cv::Mat bgrMat;
+        cv::cvtColor(rgbMat, bgrMat, cv::COLOR_RGB2BGR);
+        
+        // Create frame
+        frame.width = width;
+        frame.height = height;
+        frame.channels = channels;
+        frame.data = bgrMat.clone(); // Important: clone to avoid shared memory issues
+        
+    } catch (...) {
+        // If OpenCV fails, return empty frame
+        frame = Frame();
+    }
+#endif
+    
+    return frame;
 }

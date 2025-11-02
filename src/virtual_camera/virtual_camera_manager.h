@@ -1,5 +1,6 @@
 #pragma once
 
+#include <windows.h>
 #include "virtual_camera_directshow.h"
 #include "class_factory.h"
 #include "virtual_camera_registry.h"
@@ -18,6 +19,12 @@ private:
     std::unique_ptr<MySubstituteVirtualCameraFilter> m_pFilter;
     std::atomic<bool> m_isRegistered;
     std::atomic<bool> m_isActive;
+    
+    // Shared memory for inter-process frame communication
+    HANDLE m_sharedMemory;
+    void* m_sharedBuffer;
+    static const size_t SHARED_BUFFER_SIZE = 640 * 480 * 3; // RGB24
+    static const wchar_t* SHARED_MEMORY_NAME;
     
 public:
     VirtualCameraManager();
@@ -75,6 +82,11 @@ private:
      * Initialize COM and DirectShow components
      */
     bool InitializeCOM();
+    
+    // Shared memory helper methods
+    bool CreateSharedMemory();
+    void CleanupSharedMemory();
+    bool WriteFrameToSharedMemory(const Frame& frame);
     
     /**
      * Cleanup COM components

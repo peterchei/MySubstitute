@@ -165,23 +165,23 @@ void SimpleRegistryVirtualCamera::ShowDetailedStatus()
     
     // Admin status
     if (isAdmin) {
-        message += L"🔐 Administrator: ✅ Running with admin privileges\n";
+        message += L"Administrator: Running with admin privileges\n";
     } else {
-        message += L"🔐 Administrator: ❌ NOT running as admin\n";
-        message += L"   ⚠️ Virtual camera registration requires admin rights\n";
+        message += L"Administrator: NOT running as admin\n";
+        message += L"   Virtual camera registration requires admin rights\n";
     }
     
     // Registration status  
     if (isRegistered) {
-        message += L"📋 Registry: ✅ Virtual camera entries exist\n";
+        message += L"Registry: Virtual camera entries exist\n";
     } else {
-        message += L"📋 Registry: ❌ No registry entries found\n";
-        message += L"   ⚠️ Need to register virtual camera first\n";
+        message += L"Registry: No registry entries found\n";
+        message += L"   Need to register virtual camera first\n";
     }
     
     // Visibility status
     if (isVisible) {
-        message += L"👁️ Visibility: ✅ Device appears in DirectShow enumeration\n";
+        message += L"👁️ Visibility: Device appears in DirectShow enumeration\n";
         message += L"\n🎉 SUCCESS! Virtual camera is working correctly!\n";
         message += L"• MySubstitute Virtual Camera should appear in:\n";
         message += L"  - Windows Camera app\n";
@@ -189,10 +189,10 @@ void SimpleRegistryVirtualCamera::ShowDetailedStatus()
         message += L"  - Web browsers (Chrome, Edge, Firefox)\n";
         message += L"  - All video applications\n";
     } else {
-        message += L"👁️ Visibility: ❌ Device not appearing in applications\n";
+        message += L"👁️ Visibility: Device not appearing in applications\n";
         
         if (isRegistered) {
-            message += L"\n⚠️ ISSUE: Registered but not visible\n";
+            message += L"\nISSUE: Registered but not visible\n";
             message += L"Possible causes:\n";
             message += L"• Need to restart camera applications\n";
             message += L"• DirectShow cache needs refresh\n";

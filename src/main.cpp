@@ -198,6 +198,18 @@ bool InitializeComponents() {
         g_virtualCameraManager = std::make_unique<VirtualCameraManager>();
         std::cout << "[Main] ✓ Virtual camera manager initialized" << std::endl;
 
+        // Auto-start camera capture for immediate virtual camera functionality
+        if (g_camera && g_camera->StartCapture()) {
+            g_cameraActive = true;
+            std::cout << "[Main] ✓ Camera capture auto-started" << std::endl;
+            
+            // Auto-start virtual camera
+            if (g_virtualCameraManager) {
+                g_virtualCameraManager->StartVirtualCamera();
+                std::cout << "[Main] ✓ Virtual camera auto-activated" << std::endl;
+            }
+        }
+
         return true;
     } catch (const std::exception&) {
         return false;
@@ -293,6 +305,12 @@ void OnStartCamera() {
                 g_previewManager->ShowPreview();
             }
             
+            // Automatically start virtual camera when physical camera starts
+            if (g_virtualCameraManager && !g_virtualCameraManager->IsActive()) {
+                g_virtualCameraManager->StartVirtualCamera();
+                std::cout << "[Main] ✓ Virtual camera activated for streaming" << std::endl;
+            }
+            
             std::cout << "[Main] ✓ Camera capture started successfully" << std::endl;
         } else {
             MessageBoxA(nullptr, 
@@ -315,6 +333,13 @@ void OnStopCamera() {
         if (g_trayManager) {
             g_trayManager->UpdateTooltip(L"MySubstitute - Camera Stopped");
         }
+        
+        // Stop virtual camera when physical camera stops
+        if (g_virtualCameraManager && g_virtualCameraManager->IsActive()) {
+            g_virtualCameraManager->StopVirtualCamera();
+            std::cout << "[Main] ✓ Virtual camera deactivated" << std::endl;
+        }
+        
         // Clear the last frames
         {
             std::lock_guard<std::mutex> lock(g_frameMutex);
@@ -442,13 +467,13 @@ void OnUnregisterVirtualCamera() {
             }
             
             MessageBoxA(nullptr,
-                "✓ Virtual Camera Unregistered\n\n"
+                "Virtual Camera Unregistered\n\n"
                 "MySubstitute Virtual Camera has been removed from the system.\n"
                 "Applications will no longer see it in their camera lists.",
                 "Virtual Camera Removed", MB_OK | MB_ICONINFORMATION);
         } else {
             MessageBoxA(nullptr,
-                "❌ Failed to Unregister Virtual Camera\n\n"
+                "Failed to Unregister Virtual Camera\n\n"
                 "Make sure you're running as Administrator.",
                 "Unregistration Failed", MB_OK | MB_ICONERROR);
         }

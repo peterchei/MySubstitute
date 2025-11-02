@@ -7,16 +7,22 @@
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "shell32.lib")
 
+// Shared memory name (same as virtual camera filter)
+const wchar_t* DirectShowVirtualCameraManager::SHARED_MEMORY_NAME = L"MySubstituteVirtualCameraFrames";
+
 DirectShowVirtualCameraManager::DirectShowVirtualCameraManager() :
     m_isRegistered(false),
-    m_isStreaming(false)
+    m_isStreaming(false),
+    m_sharedMemory(nullptr),
+    m_sharedBuffer(nullptr)
 {
     m_dllPath = GetDLLPath();
+    CreateSharedMemory();
 }
 
 DirectShowVirtualCameraManager::~DirectShowVirtualCameraManager()
 {
-    // Cleanup if needed
+    CleanupSharedMemory();
 }
 
 bool DirectShowVirtualCameraManager::CheckAdminPrivileges() const
@@ -258,4 +264,99 @@ void DirectShowVirtualCameraManager::ShowDetailedStatus() const
     std::wcout << L"    DLL Exists: " << (PathFileExistsW(m_dllPath.c_str()) ? L"✅" : L"❌") << std::endl;
     std::wcout << L"    Admin Privileges: " << (CheckAdminPrivileges() ? L"✅" : L"❌") << std::endl;
     std::wcout << L"    Device Visible: " << (TestDeviceVisibility() ? L"✅" : L"❌") << std::endl;
+    std::wcout << L"    Shared Memory: " << (m_sharedBuffer ? L"✅" : L"❌") << std::endl;
+    std::wcout << L"    Streaming: " << (m_isStreaming ? L"✅" : L"❌") << std::endl;
+}
+
+void DirectShowVirtualCameraManager::UpdateFrame(const Frame& frame)
+{
+    if (!m_sharedBuffer || frame.data.empty()) {
+        return;
+    }
+    
+#if defined(HAVE_OPENCV) && (HAVE_OPENCV == 1)
+    try {
+        // Convert frame data to RGB24 format for shared memory
+        cv::Mat rgbFrame;
+        
+        if (frame.data.channels() == 3) {
+            // Convert BGR (OpenCV) to RGB (Windows standard)
+            cv::cvtColor(frame.data, rgbFrame, cv::COLOR_BGR2RGB);
+        } else if (frame.data.channels() == 4) {
+            // Convert BGRA to RGB
+            cv::cvtColor(frame.data, rgbFrame, cv::COLOR_BGRA2RGB);
+        } else {
+            // Grayscale to RGB
+            cv::cvtColor(frame.data, rgbFrame, cv::COLOR_GRAY2RGB);
+        }
+        
+        // Resize to match shared memory buffer size (640x480)
+        if (rgbFrame.cols != 640 || rgbFrame.rows != 480) {
+            cv::resize(rgbFrame, rgbFrame, cv::Size(640, 480));
+        }
+        
+        // Copy to shared memory buffer
+        size_t frameSize = rgbFrame.rows * rgbFrame.cols * rgbFrame.channels();
+        if (frameSize <= SHARED_BUFFER_SIZE) {
+            memcpy(m_sharedBuffer, rgbFrame.data, frameSize);
+            m_isStreaming = true;
+        }
+        
+    } catch (...) {
+        // Error handling - don't crash
+        m_isStreaming = false;
+    }
+#endif
+}
+
+bool DirectShowVirtualCameraManager::CreateSharedMemory()
+{
+    // Create shared memory that will be accessed by DirectShow DLL
+    m_sharedMemory = CreateFileMappingW(
+        INVALID_HANDLE_VALUE,
+        nullptr,
+        PAGE_READWRITE,
+        0,
+        SHARED_BUFFER_SIZE,
+        SHARED_MEMORY_NAME
+    );
+    
+    if (m_sharedMemory == nullptr) {
+        std::wcout << L"[DirectShow] ❌ Failed to create shared memory" << std::endl;
+        return false;
+    }
+    
+    m_sharedBuffer = MapViewOfFile(
+        m_sharedMemory,
+        FILE_MAP_ALL_ACCESS,
+        0,
+        0,
+        SHARED_BUFFER_SIZE
+    );
+    
+    if (m_sharedBuffer == nullptr) {
+        CloseHandle(m_sharedMemory);
+        m_sharedMemory = nullptr;
+        std::wcout << L"[DirectShow] ❌ Failed to map shared memory view" << std::endl;
+        return false;
+    }
+    
+    // Initialize with black frame
+    memset(m_sharedBuffer, 0, SHARED_BUFFER_SIZE);
+    
+    std::wcout << L"[DirectShow] ✅ Shared memory created for frame streaming" << std::endl;
+    return true;
+}
+
+void DirectShowVirtualCameraManager::CleanupSharedMemory()
+{
+    if (m_sharedBuffer) {
+        UnmapViewOfFile(m_sharedBuffer);
+        m_sharedBuffer = nullptr;
+    }
+    
+    if (m_sharedMemory) {
+        CloseHandle(m_sharedMemory);
+        m_sharedMemory = nullptr;
+    }
 }

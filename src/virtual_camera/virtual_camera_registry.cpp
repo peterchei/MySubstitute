@@ -12,26 +12,26 @@ bool VirtualCameraRegistry::RegisterVirtualCamera()
     
     // Step 1: Create DirectShow filter entries
     if (!CreateDirectShowEntries()) {
-        std::wcout << L"[Registry] ❌ Failed to create DirectShow entries" << std::endl;
+        std::wcout << L"[Registry] Failed to create DirectShow entries" << std::endl;
         success = false;
     }
     
     // Step 2: Create Media Foundation entries
     if (!CreateMediaFoundationEntries()) {
-        std::wcout << L"[Registry] ⚠️ Failed to create Media Foundation entries (may not be critical)" << std::endl;
+        std::wcout << L"[Registry] Failed to create Media Foundation entries (may not be critical)" << std::endl;
     }
     
     // Step 3: Create device enumeration entries
     if (!CreateDeviceEnumerationEntries()) {
-        std::wcout << L"[Registry] ❌ Failed to create device enumeration entries" << std::endl;
+        std::wcout << L"[Registry] Failed to create device enumeration entries" << std::endl;
         success = false;
     }
     
     if (success) {
-        std::wcout << L"[Registry] ✅ Virtual camera registered successfully!" << std::endl;
-        std::wcout << L"[Registry] 📋 Restart camera applications to see 'MySubstitute Virtual Camera'" << std::endl;
+        std::wcout << L"[Registry] Virtual camera registered successfully!" << std::endl;
+        std::wcout << L"[Registry] Restart camera applications to see 'MySubstitute Virtual Camera'" << std::endl;
     } else {
-        std::wcout << L"[Registry] ❌ Virtual camera registration failed" << std::endl;
+        std::wcout << L"[Registry] Virtual camera registration failed" << std::endl;
     }
     
     return success;
@@ -42,10 +42,10 @@ bool VirtualCameraRegistry::UnregisterVirtualCamera()
     std::wcout << L"[Registry] Unregistering MySubstitute Virtual Camera..." << std::endl;
     
     if (RemoveAllEntries()) {
-        std::wcout << L"[Registry] ✅ Virtual camera unregistered successfully" << std::endl;
+        std::wcout << L"[Registry] Virtual camera unregistered successfully" << std::endl;
         return true;
     } else {
-        std::wcout << L"[Registry] ❌ Failed to unregister virtual camera" << std::endl;
+        std::wcout << L"[Registry] Failed to unregister virtual camera" << std::endl;
         return false;
     }
 }

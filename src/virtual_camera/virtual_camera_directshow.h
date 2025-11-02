@@ -41,6 +41,12 @@ private:
     Frame m_latestFrame;
     std::mutex m_frameMutex;
     
+    // Shared memory for inter-process communication
+    HANDLE m_sharedMemory;
+    void* m_sharedBuffer;
+    static const size_t SHARED_BUFFER_SIZE = 640 * 480 * 3; // RGB24
+    static const wchar_t* SHARED_MEMORY_NAME;
+    
     MySubstituteVirtualCameraFilter();
     
 public:
@@ -90,6 +96,13 @@ public:
     HRESULT GetPin(int n, IPin **ppPin);
     int GetPinCount() { return 1; }
     
+private:
+    // Shared memory helper methods
+    bool CreateSharedMemory();
+    void CleanupSharedMemory();
+    Frame ReadFrameFromSharedMemory();
+    
+public:
     // Lock methods
     void Lock() { EnterCriticalSection(&m_FilterLock); }
     void Unlock() { LeaveCriticalSection(&m_FilterLock); }
