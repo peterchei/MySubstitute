@@ -11,6 +11,7 @@
 #include "virtual_camera/virtual_camera_filter.h"
 #include "virtual_camera/virtual_camera_manager.h"
 #include "virtual_camera/camera_diagnostics.h"
+#include "virtual_camera/simple_virtual_camera_new.h"
 #include "service/background_service.h"
 #include "ui/system_tray_manager.h"
 #include "ui/preview_window_manager.h"
@@ -21,7 +22,7 @@ std::unique_ptr<CameraCapture> g_camera;
 std::unique_ptr<PassthroughProcessor> g_processor;
 std::unique_ptr<VirtualCameraFilter> g_virtualCamera;
 std::unique_ptr<VirtualCameraManager> g_virtualCameraManager;
-// Removed complex virtual camera components - using diagnostics instead
+std::unique_ptr<SimpleVirtualCamera> g_simpleVirtualCamera;
 std::unique_ptr<PreviewWindowManager> g_previewManager;
 bool g_running = true;
 Frame g_lastProcessedFrame;  // Store the latest processed frame for preview
@@ -155,6 +156,14 @@ bool InitializeComponents() {
         // Initialize new DirectShow virtual camera manager
         g_virtualCameraManager = std::make_unique<VirtualCameraManager>();
         std::cout << "[Main] ✓ Virtual camera manager initialized" << std::endl;
+
+        // Initialize simple virtual camera
+        g_simpleVirtualCamera = std::make_unique<SimpleVirtualCamera>();
+        if (g_simpleVirtualCamera->Initialize()) {
+            std::cout << "[Main] ✓ Simple virtual camera initialized" << std::endl;
+        } else {
+            std::cout << "[Main] ⚠️ Simple virtual camera initialization failed" << std::endl;
+        }
 
         return true;
     } catch (const std::exception&) {
@@ -334,10 +343,37 @@ void OnReleaseCamera() {
 }
 
 void OnRegisterVirtualCamera() {
-    std::cout << "[Main] 🔍 Running camera diagnostics..." << std::endl;
+    std::cout << "[Main] 🔍 Running camera diagnostics and virtual camera setup..." << std::endl;
     
-    // Use the simple diagnostics system
+    // First run diagnostics to see what we have
     CameraDiagnostics::ShowDiagnosticsResults();
+    
+    // Then try to register our simple virtual camera
+    if (g_simpleVirtualCamera) {
+        if (g_simpleVirtualCamera->RegisterWithSystem()) {
+            MessageBoxA(nullptr,
+                "🎉 Virtual Camera Registration Successful!\n\n"
+                "✅ MySubstitute Virtual Camera is now available\n\n"
+                "📋 Next steps:\n"
+                "1. Right-click → 'Start Virtual Camera'\n"
+                "2. Open Camera app, Zoom, or Teams\n"
+                "3. Look for 'MySubstitute Virtual Camera' in the camera list\n\n"
+                "💡 If you don't see it, try installing OBS Studio which includes\n"
+                "a proven virtual camera infrastructure we can use.",
+                "Registration Complete", MB_OK | MB_ICONINFORMATION);
+        } else {
+            MessageBoxA(nullptr,
+                "⚠️ Virtual Camera Registration Incomplete\n\n"
+                "We couldn't create a full virtual camera driver, but MySubstitute\n"
+                "can still process your camera feed.\n\n"
+                "💡 Recommended solution:\n"
+                "• Install OBS Studio (free) which includes virtual camera support\n"
+                "• MySubstitute can then use OBS's virtual camera infrastructure\n"
+                "• This is the most reliable approach for virtual cameras\n\n"
+                "Alternative: Use MySubstitute to process your main camera feed.",
+                "Registration Info", MB_OK | MB_ICONINFORMATION);
+        }
+    }
 }
 
 void OnUnregisterVirtualCamera() {
@@ -364,15 +400,49 @@ void OnUnregisterVirtualCamera() {
 }
 
 void OnStartVirtualCamera() {
-    if (g_virtualCameraManager) {
-        std::cout << "[Main] Starting virtual camera..." << std::endl;
-        
-        if (!g_virtualCameraManager->IsRegistered()) {
+    std::cout << "[Main] Starting virtual camera..." << std::endl;
+    
+    // Try our simple virtual camera first
+    if (g_simpleVirtualCamera) {
+        if (!g_simpleVirtualCamera->IsRegistered()) {
             MessageBoxA(nullptr,
                 "⚠️ Virtual Camera Not Registered\n\n"
                 "Please register the virtual camera first using:\n"
-                "'📹 Register Virtual Camera' from the menu.",
+                "'📹 Register Virtual Camera' from the menu.\n\n"
+                "💡 Or install OBS Studio for reliable virtual camera support.",
                 "Not Registered", MB_OK | MB_ICONWARNING);
+            return;
+        }
+        
+        if (g_simpleVirtualCamera->Start()) {
+            if (g_trayManager) {
+                g_trayManager->UpdateTooltip(L"MySubstitute - Virtual Camera Active");
+            }
+            
+            MessageBoxA(nullptr,
+                "🎬 Virtual Camera Started!\n\n"
+                "✅ MySubstitute virtual camera is now running\n\n"
+                "📋 How to use:\n"
+                "• Open Camera app, Zoom, Teams, or Discord\n"
+                "• Look for 'MySubstitute Virtual Camera' in camera list\n"
+                "• Select it to use AI-processed video\n\n"
+                "⚡ Make sure to also start your real camera for input!",
+                "Virtual Camera Active", MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+    }
+    
+    // Fallback to old virtual camera manager
+    if (g_virtualCameraManager) {
+        if (!g_virtualCameraManager->IsRegistered()) {
+            MessageBoxA(nullptr,
+                "⚠️ Virtual Camera Not Available\n\n"
+                "No virtual camera infrastructure was found.\n\n"
+                "💡 Recommended solution:\n"
+                "• Install OBS Studio (free) for virtual camera support\n"
+                "• Use MySubstitute to enhance your main camera feed\n"
+                "• Virtual cameras require special drivers or software",
+                "Not Available", MB_OK | MB_ICONWARNING);
             return;
         }
         
