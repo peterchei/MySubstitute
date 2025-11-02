@@ -41,8 +41,13 @@ bool PreviewWindowManager::Initialize(HINSTANCE hInstance, FrameCallback frameCa
     m_bitmapInfo.bmiHeader.biWidth = m_width;
     m_bitmapInfo.bmiHeader.biHeight = -m_height;  // Negative for top-down DIB
     m_bitmapInfo.bmiHeader.biPlanes = 1;
-    m_bitmapInfo.bmiHeader.biBitCount = 24;  // RGB
+    m_bitmapInfo.bmiHeader.biBitCount = 24;  // 24-bit RGB
     m_bitmapInfo.bmiHeader.biCompression = BI_RGB;
+    m_bitmapInfo.bmiHeader.biSizeImage = 0;  // Can be 0 for BI_RGB
+    m_bitmapInfo.bmiHeader.biXPelsPerMeter = 0;
+    m_bitmapInfo.bmiHeader.biYPelsPerMeter = 0;
+    m_bitmapInfo.bmiHeader.biClrUsed = 0;
+    m_bitmapInfo.bmiHeader.biClrImportant = 0;
 
     // Create memory DC for off-screen rendering
     HDC screenDC = GetDC(m_hwnd);
@@ -289,28 +294,52 @@ void PreviewWindowManager::RenderFrame() {
     try {
         Frame frame = m_frameCallback();
         if (!frame.IsValid()) {
-            // Fill with black if no frame available
-            memset(m_bitmapData, 0, m_width * m_height * 3);
+            // Fill with black if no frame available - calculate proper stride
+            int stride = ((m_width * 3 + 3) & ~3); // 4-byte alignment
+            unsigned char* pixels = (unsigned char*)m_bitmapData;
+            for (int y = 0; y < m_height; ++y) {
+                memset(pixels + y * stride, 0, m_width * 3);
+            }
             return;
         }
 
 #if HAVE_OPENCV
-        // Convert OpenCV Mat to RGB format for Windows bitmap
+        // Convert OpenCV Mat to proper format for Windows bitmap
         cv::Mat displayFrame;
+        
+        // Handle different input formats
         if (frame.data.channels() == 3) {
+            // Convert BGR to RGB (OpenCV uses BGR, Windows DIB uses RGB)
             cv::cvtColor(frame.data, displayFrame, cv::COLOR_BGR2RGB);
+        } else if (frame.data.channels() == 1) {
+            // Convert grayscale to RGB
+            cv::cvtColor(frame.data, displayFrame, cv::COLOR_GRAY2RGB);
         } else {
             frame.data.copyTo(displayFrame);
         }
         
-        // Resize to fit preview window
+        // Resize to fit preview window if needed
         if (displayFrame.cols != m_width || displayFrame.rows != m_height) {
-            cv::resize(displayFrame, displayFrame, cv::Size(m_width, m_height));
+            cv::resize(displayFrame, displayFrame, cv::Size(m_width, m_height), 0, 0, cv::INTER_LINEAR);
         }
         
-        // Copy pixel data to bitmap
-        if (displayFrame.isContinuous()) {
-            memcpy(m_bitmapData, displayFrame.data, m_width * m_height * 3);
+        // Ensure we have 3-channel RGB data
+        if (displayFrame.channels() != 3) {
+            std::wcerr << L"Warning: Frame has " << displayFrame.channels() << L" channels, expected 3" << std::endl;
+            return;
+        }
+        
+        // Copy pixel data to bitmap with proper stride handling
+        // Windows DIB requires 4-byte aligned rows
+        int srcStride = displayFrame.step[0]; // OpenCV stride
+        int dstStride = ((m_width * 3 + 3) & ~3); // Windows DIB stride (4-byte aligned)
+        
+        unsigned char* srcData = displayFrame.data;
+        unsigned char* dstData = (unsigned char*)m_bitmapData;
+        
+        for (int y = 0; y < m_height; ++y) {
+            // Copy row by row to handle stride differences
+            memcpy(dstData + y * dstStride, srcData + y * srcStride, m_width * 3);
         }
 #else
         // Fallback: Fill with a pattern if OpenCV is not available
@@ -324,14 +353,20 @@ void PreviewWindowManager::RenderFrame() {
             }
         }
 #endif
-    } catch (const std::exception&) {
-        // Fill with error color (red) on exception
-        memset(m_bitmapData, 0, m_width * m_height * 3);
+    } catch (const std::exception& e) {
+        // Fill with error color (red) on exception - handle stride properly
+        std::wcerr << L"RenderFrame exception: " << e.what() << std::endl;
+        
+        int stride = ((m_width * 3 + 3) & ~3); // 4-byte alignment
         unsigned char* pixels = (unsigned char*)m_bitmapData;
-        for (int i = 0; i < m_width * m_height * 3; i += 3) {
-            pixels[i] = 0;    // R
-            pixels[i + 1] = 0; // G
-            pixels[i + 2] = 255; // B (red in RGB)
+        
+        for (int y = 0; y < m_height; ++y) {
+            unsigned char* row = pixels + y * stride;
+            for (int x = 0; x < m_width; ++x) {
+                row[x * 3] = 255;     // R - Red error color
+                row[x * 3 + 1] = 0;   // G
+                row[x * 3 + 2] = 0;   // B
+            }
         }
     }
 }
