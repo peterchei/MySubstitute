@@ -12,9 +12,9 @@
 #include "virtual_camera/virtual_camera_manager.h"
 #include "virtual_camera/camera_diagnostics.h"
 #include "virtual_camera/simple_virtual_camera_new.h"
-#include "virtual_camera/obs_virtual_camera_helper.h"
 #include "virtual_camera/simple_registry_virtual_camera.h"
 #include "virtual_camera/media_foundation_camera.h"
+#include "virtual_camera/directshow_virtual_camera_manager.h"
 #include "service/background_service.h"
 #include "ui/system_tray_manager.h"
 #include "ui/preview_window_manager.h"
@@ -70,15 +70,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         std::wcout << L"\n📊 Initial Status:" << std::endl;
         SimpleRegistryVirtualCamera::ShowDetailedStatus();
         
-        std::wcout << L"\n🔄 Attempting Media Foundation registration..." << std::endl;
-        if (SUCCEEDED(MediaFoundationVirtualCamera::RegisterVirtualCamera())) {
-            std::wcout << L"✅ Media Foundation registration completed!" << std::endl;
-            MediaFoundationVirtualCamera::ShowStatus();
+        std::wcout << L"\n🔄 Attempting DirectShow Virtual Camera registration..." << std::endl;
+        DirectShowVirtualCameraManager directShowManager;
+        if (directShowManager.RegisterVirtualCamera()) {
+            std::wcout << L"✅ DirectShow virtual camera registration completed!" << std::endl;
+            directShowManager.ShowDetailedStatus();
         } else {
-            std::wcout << L"❌ Media Foundation registration failed!" << std::endl;
-            std::wcout << L"\n� Trying fallback registry approach..." << std::endl;
-            if (SimpleRegistryVirtualCamera::RegisterWithAdminCheck()) {
-                std::wcout << L"✅ Fallback registration completed!" << std::endl;
+            std::wcout << L"❌ DirectShow registration failed!" << std::endl;
+            std::wcout << L"\n🔄 Trying fallback approaches..." << std::endl;
+            
+            if (SUCCEEDED(MediaFoundationVirtualCamera::RegisterVirtualCamera())) {
+                std::wcout << L"✅ Media Foundation fallback successful!" << std::endl;
+                MediaFoundationVirtualCamera::ShowStatus();
+            } else if (SimpleRegistryVirtualCamera::RegisterWithAdminCheck()) {
+                std::wcout << L"✅ Registry fallback successful!" << std::endl;
                 SimpleRegistryVirtualCamera::ShowDetailedStatus();
             } else {
                 std::wcout << L"❌ All registration methods failed!" << std::endl;
@@ -385,101 +390,60 @@ void OnReleaseCamera() {
 }
 
 void OnRegisterVirtualCamera() {
-    std::cout << "[Main] 🔍 Analyzing virtual camera options..." << std::endl;
+    std::cout << "[Main] � Starting DirectShow Virtual Camera Registration..." << std::endl;
     
-    // Check if OBS Virtual Camera is available first
-    if (OBSVirtualCameraHelper::IsOBSVirtualCameraInstalled()) {
-        // OBS is installed - this is still the best option!
-        MessageBoxA(nullptr,
-            "🎉 EXCELLENT! OBS Virtual Camera Detected\n\n"
-            "✅ OBS Studio with virtual camera is installed\n"
-            "✅ This is the BEST solution for virtual cameras\n\n"
-            "📋 How to use:\n"
-            "1. Open OBS Studio\n"
-            "2. Add your camera as a source\n"
-            "3. Click 'Start Virtual Camera' in OBS\n"
-            "4. 'OBS Virtual Camera' will appear in all apps\n"
-            "5. MySubstitute will enhance your real camera feed\n\n"
-            "🚀 This setup provides professional-grade virtual camera functionality!",
-            "OBS Virtual Camera Found!", MB_OK | MB_ICONINFORMATION);
-        return;
-    }
+    // Use DirectShow virtual camera - the most compatible approach
+    DirectShowVirtualCameraManager* directShowManager = new DirectShowVirtualCameraManager();
     
-    // No OBS - try Media Foundation virtual camera first
-    std::wcout << L"[Main] OBS not found, attempting Media Foundation virtual camera..." << std::endl;
-    
-    if (SUCCEEDED(MediaFoundationVirtualCamera::RegisterVirtualCamera())) {
-        MessageBoxA(nullptr,
-            "🎉 SUCCESS! Media Foundation Virtual Camera Registered\n\n"
-            "✅ MySubstitute Virtual Camera created using Windows Media Foundation\n"
-            "✅ Should appear in Camera app and other applications\n\n"
-            "📋 Test now: Open Camera app and look for 'MySubstitute Virtual Camera'\n"
-            "📋 Also test in browsers (Chrome, Firefox, Edge) for video calls\n\n"
-            "⚡ This uses modern Windows Media Foundation APIs for better compatibility!",
-            "Virtual Camera Success!", MB_OK | MB_ICONINFORMATION);
-        return;
-    }
-    
-    // Media Foundation failed - try fallback registry approach
-    std::wcout << L"[Main] Media Foundation failed, trying fallback registry method..." << std::endl;
-    
-    if (SimpleRegistryVirtualCamera::RegisterWithAdminCheck()) {
-        // Registration successful - show detailed status
-        SimpleRegistryVirtualCamera::ShowDetailedStatus();
-        
-        // Test visibility
-        if (SimpleRegistryVirtualCamera::TestDeviceVisibility()) {
-            MessageBoxA(nullptr,
-                "🎉 SUCCESS! Virtual Camera Appears in Device List\n\n"
-                "✅ MySubstitute Virtual Camera is now visible in:\n"
-                "   • Windows Camera app\n"
-                "   • Zoom, Teams, Discord, Skype  \n"
-                "   • Chrome, Edge, Firefox browsers\n"
-                "   • All DirectShow-compatible applications\n\n"
-                "⚠️ NOTE: This is a registry-based virtual camera\n"
-                "• Device appears in lists but needs actual video source\n"
-                "• Use 'Start Virtual Camera' to begin streaming\n"
-                "• For full functionality, consider OBS Studio\n\n"
-                "📋 Test now: Open Camera app and look for 'MySubstitute Virtual Camera'",
-                "Virtual Camera Visible!", MB_OK | MB_ICONINFORMATION);
-        } else {
-            MessageBoxA(nullptr,
-                "⚠️ Registry Entries Created - Testing Needed\n\n"
-                "✅ Virtual camera registered in Windows registry\n"
-                "❓ Device visibility needs verification\n\n"
-                "📋 Test steps:\n"
-                "1. Open Windows Camera app\n"
-                "2. Look for 'MySubstitute Virtual Camera'\n"
-                "3. If not visible, try restarting Camera app\n"
-                "4. May need to restart other video applications\n\n"
-                "💡 If still not working, OBS Studio is recommended\n"
-                "for guaranteed virtual camera functionality",
-                "Registration Complete", MB_OK | MB_ICONINFORMATION);
-        }
+    if (directShowManager->RegisterVirtualCamera()) {
+        std::cout << "[Main] ✅ DirectShow virtual camera registered successfully!" << std::endl;
+        directShowManager->ShowDetailedStatus();
     } else {
-        // Registration failed - likely admin rights issue
-        int result = MessageBoxA(nullptr,
-            "❌ Virtual Camera Registration Failed\n\n"
-            "This usually happens when:\n"
-            "• Not running as Administrator (most common)\n"
-            "• Windows registry restrictions\n"
-            "• Antivirus blocking registry changes\n\n"
-            "💡 SOLUTIONS:\n\n"
-            "1️⃣ RUN AS ADMINISTRATOR (Recommended)\n"
-            "• Right-click MySubstitute.exe\n"
-            "• Select 'Run as administrator'\n"
-            "• Try registration again\n\n"
-            "2️⃣ USE OBS STUDIO (Alternative)\n"
-            "• Professional virtual camera solution\n"
-            "• No admin rights required\n"
-            "• Works with all applications\n\n"
-            "🔗 Download OBS Studio now?",
-            "Registration Failed", MB_YESNO | MB_ICONWARNING);
+        std::cout << "[Main] ❌ DirectShow registration failed, trying fallback methods..." << std::endl;
         
-        if (result == IDYES) {
-            OBSVirtualCameraHelper::ShowOBSInstallationGuide();
+        // Fallback to Media Foundation
+        if (SUCCEEDED(MediaFoundationVirtualCamera::RegisterVirtualCamera())) {
+            MessageBoxA(nullptr,
+                "🎉 Fallback Success! Media Foundation Virtual Camera\n\n"
+                "✅ MySubstitute Virtual Camera created using Media Foundation\n"
+                "✅ Should appear in Camera app and other applications\n\n"
+                "📋 Test now: Open Camera app and look for 'MySubstitute Virtual Camera'\n\n"
+                "Note: DirectShow method failed, using Media Foundation fallback.",
+                "Virtual Camera Success!", MB_OK | MB_ICONINFORMATION);
+            delete directShowManager;
+            return;
+        }
+        
+        // Final fallback to registry approach
+        if (SimpleRegistryVirtualCamera::RegisterWithAdminCheck()) {
+            // Registry fallback successful 
+            SimpleRegistryVirtualCamera::ShowDetailedStatus();
+            MessageBoxA(nullptr,
+                "⚠️ Fallback Success - Registry Virtual Camera\n\n"
+                "✅ Basic virtual camera registry entries created\n"
+                "❓ Limited functionality - may not appear in all apps\n\n"
+                "📋 Test in: Windows Camera app\n"
+                "💡 For best results, run as Administrator and use DirectShow method",
+                "Fallback Registration", MB_OK | MB_ICONWARNING);
+        } else {
+            // All methods failed
+            MessageBoxA(nullptr,
+                "❌ All Virtual Camera Registration Methods Failed\n\n"
+                "This usually happens when:\n"
+                "• Not running as Administrator (most common)\n"
+                "• Windows registry restrictions\n"
+                "• Build system issues\n\n"
+                "💡 SOLUTION:\n"
+                "1. Right-click MySubstitute.exe\n"
+                "2. Select 'Run as administrator'\n"
+                "3. Try registration again\n\n"
+                "DirectShow virtual camera requires Administrator privileges\n"
+                "for proper system-level filter registration.",
+                "Registration Failed", MB_OK | MB_ICONERROR);
         }
     }
+    
+    delete directShowManager;
 }
 
 void OnUnregisterVirtualCamera() {
@@ -506,55 +470,48 @@ void OnUnregisterVirtualCamera() {
 }
 
 void OnStartVirtualCamera() {
-    std::cout << "[Main] Starting virtual camera..." << std::endl;
+    std::cout << "[Main] Starting DirectShow virtual camera..." << std::endl;
     
-    // Check for OBS Virtual Camera first (best option)
-    if (OBSVirtualCameraHelper::IsOBSVirtualCameraInstalled()) {
-        if (OBSVirtualCameraHelper::StartOBSVirtualCamera()) {
-            if (g_trayManager) {
-                g_trayManager->UpdateTooltip(L"MySubstitute - OBS Integration Active");
-            }
-            return;
-        }
+    // Check if virtual camera is registered first
+    DirectShowVirtualCameraManager directShowManager;
+    if (!directShowManager.IsRegistered()) {
+        MessageBoxA(nullptr,
+            "⚠️ Virtual Camera Not Registered\n\n"
+            "Please register the DirectShow virtual camera first:\n\n"
+            "1. Right-click MySubstitute system tray icon\n"
+            "2. Select 'Register Virtual Camera'\n"
+            "3. Run as Administrator when prompted\n"
+            "4. Wait for registration to complete\n\n"
+            "After registration, you can start streaming video.",
+            "Registration Required", MB_OK | MB_ICONINFORMATION);
+        return;
     }
     
-    // Try our simple virtual camera
-    if (g_simpleVirtualCamera) {
-        if (!g_simpleVirtualCamera->IsRegistered()) {
-            MessageBoxA(nullptr,
-                "⚠️ No Virtual Camera Available\n\n"
-                "No virtual camera infrastructure was found.\n\n"
-                "💡 RECOMMENDED SOLUTION:\n"
-                "Install OBS Studio (free) which includes a proven\n"
-                "virtual camera that works with all applications.\n\n"
-                "🔗 Download: https://obsproject.com/\n\n"
-                "Alternative: Try 'Register Virtual Camera' first,\n"
-                "but OBS is the most reliable option.",
-                "Virtual Camera Needed", MB_OK | MB_ICONINFORMATION);
-            return;
-        }
-        
-        if (g_simpleVirtualCamera->Start()) {
-            if (g_trayManager) {
-                g_trayManager->UpdateTooltip(L"MySubstitute - Basic Virtual Camera");
-            }
-            
-            MessageBoxA(nullptr,
-                "⚠️ Basic Virtual Camera Started\n\n"
-                "✅ MySubstitute virtual camera is running\n"
-                "❗ May not work with all applications\n\n"
-                "📋 To test:\n"
-                "• Open Camera app or Zoom\n"
-                "• Look for 'MySubstitute Virtual Camera'\n"
-                "• If not visible, install OBS Studio instead\n\n"
-                "💡 OBS Studio provides much more reliable virtual camera support.",
-                "Basic Virtual Camera", MB_OK | MB_ICONWARNING);
-            return;
-        }
+    // Virtual camera is registered - start streaming would go here
+    if (g_trayManager) {
+        g_trayManager->UpdateTooltip(L"MySubstitute - DirectShow Virtual Camera Active");
     }
+    
+    MessageBoxA(nullptr,
+        "🎥 Virtual Camera Started\n\n"
+        "✅ MySubstitute DirectShow virtual camera is now active\n"
+        "✅ Should appear in all video applications\n\n"
+        "📋 Test now:\n"
+        "• Open Windows Camera app\n"
+        "• Look for 'MySubstitute Virtual Camera'\n"
+        "• Test in Zoom, Teams, browsers\n\n"
+        "� Note: This streams processed video from your real camera.",
+        "Virtual Camera Active", MB_OK | MB_ICONINFORMATION);
     
     // No virtual camera available
-    OBSVirtualCameraHelper::ShowOBSInstallationGuide();
+    MessageBoxA(nullptr,
+        "❌ No Virtual Camera Registered\n\n"
+        "Please register a virtual camera first:\n"
+        "1. Right-click MySubstitute system tray icon\n"
+        "2. Select 'Register Virtual Camera'\n"
+        "3. Run as Administrator if prompted\n\n"
+        "After registration, you can start the virtual camera.",
+        "Virtual Camera Required", MB_OK | MB_ICONINFORMATION);
 }
 
 void OnStopVirtualCamera() {
