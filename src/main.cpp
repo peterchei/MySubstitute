@@ -71,6 +71,36 @@ void OnFilterChanged(const std::string& filterName) {
             faceFilter->SetSpeechBubbleText(text);
             std::cout << "[OnFilterChanged] Set speech bubble text to: " << text << std::endl;
         }
+    } else if (filterName == "glasses_on") {
+        if (auto faceFilter = dynamic_cast<FaceFilterProcessor*>(g_processor.get())) {
+            faceFilter->SetGlassesEnabled(true);
+            std::cout << "[OnFilterChanged] Virtual glasses enabled" << std::endl;
+        }
+    } else if (filterName == "glasses_off") {
+        if (auto faceFilter = dynamic_cast<FaceFilterProcessor*>(g_processor.get())) {
+            faceFilter->SetGlassesEnabled(false);
+            std::cout << "[OnFilterChanged] Virtual glasses disabled" << std::endl;
+        }
+    } else if (filterName == "hat_on") {
+        if (auto faceFilter = dynamic_cast<FaceFilterProcessor*>(g_processor.get())) {
+            faceFilter->SetHatEnabled(true);
+            std::cout << "[OnFilterChanged] Funny hat enabled" << std::endl;
+        }
+    } else if (filterName == "hat_off") {
+        if (auto faceFilter = dynamic_cast<FaceFilterProcessor*>(g_processor.get())) {
+            faceFilter->SetHatEnabled(false);
+            std::cout << "[OnFilterChanged] Funny hat disabled" << std::endl;
+        }
+    } else if (filterName == "speech_on") {
+        if (auto faceFilter = dynamic_cast<FaceFilterProcessor*>(g_processor.get())) {
+            faceFilter->SetSpeechBubbleEnabled(true);
+            std::cout << "[OnFilterChanged] Speech bubble enabled" << std::endl;
+        }
+    } else if (filterName == "speech_off") {
+        if (auto faceFilter = dynamic_cast<FaceFilterProcessor*>(g_processor.get())) {
+            faceFilter->SetSpeechBubbleEnabled(false);
+            std::cout << "[OnFilterChanged] Speech bubble disabled" << std::endl;
+        }
     } else {
         std::cout << "[OnFilterChanged] Unknown filter: " << filterName << std::endl;
     }

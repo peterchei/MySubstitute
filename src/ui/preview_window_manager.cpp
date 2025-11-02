@@ -398,7 +398,7 @@ void PreviewWindowManager::OnFilterSelectionChanged() {
 }
 
 void PreviewWindowManager::OnControlPanelCommand(HWND hwnd, int id, int code) {
-    if (code != BN_CLICKED && code != CBN_SELCHANGE) return;
+    if (code != BN_CLICKED && code != CBN_SELCHANGE && code != EN_CHANGE) return;
 
     switch (id) {
         case 1001: // Filter combo box
@@ -408,20 +408,39 @@ void PreviewWindowManager::OnControlPanelCommand(HWND hwnd, int id, int code) {
             break;
 
         case 1002: // Glasses checkbox
+            if (code == BN_CLICKED && m_filterCallback) {
+                bool checked = (SendMessageW(m_glassesCheckBox, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                std::string cmd = checked ? "glasses_on" : "glasses_off";
+                m_filterCallback(cmd);
+            }
+            break;
+
         case 1003: // Hat checkbox
+            if (code == BN_CLICKED && m_filterCallback) {
+                bool checked = (SendMessageW(m_hatCheckBox, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                std::string cmd = checked ? "hat_on" : "hat_off";
+                m_filterCallback(cmd);
+            }
+            break;
+
         case 1004: // Speech bubble checkbox
-            // These will be handled by the filter callback
-            if (m_filterCallback) {
+            if (code == BN_CLICKED && m_filterCallback) {
+                bool checked = (SendMessageW(m_speechBubbleCheckBox, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                std::string cmd = checked ? "speech_on" : "speech_off";
+                m_filterCallback(cmd);
+            }
+            break;
+
+        case 1005: // Speech bubble text edit
+            if (code == EN_CHANGE && m_filterCallback) {
                 // Get current speech bubble text
-                if (m_speechBubbleEdit) {
-                    wchar_t text[256];
-                    GetWindowTextW(m_speechBubbleEdit, text, 256);
-                    // Convert wide string to narrow string
-                    std::wstring wideText(text);
-                    std::string narrowText(wideText.begin(), wideText.end());
-                    std::string speechText = "speech_text:" + narrowText;
-                    m_filterCallback(speechText);
-                }
+                wchar_t text[256];
+                GetWindowTextW(m_speechBubbleEdit, text, 256);
+                // Convert wide string to narrow string
+                std::wstring wideText(text);
+                std::string narrowText(wideText.begin(), wideText.end());
+                std::string speechText = "speech_text:" + narrowText;
+                m_filterCallback(speechText);
             }
             break;
     }
