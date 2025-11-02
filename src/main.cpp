@@ -613,6 +613,15 @@ void OnCameraFrame(const Frame& frame) {
     // Process the frame through AI processor
     Frame processedFrame = g_processor->ProcessFrame(frame);
     
+    // Debug output for face filter
+    if (g_processor->GetName() == "Face Filter Processor") {
+        static int frameCount = 0;
+        if (frameCount % 30 == 0) { // Log every 30 frames
+            std::cout << "[Main] Face filter processing frame " << frameCount << std::endl;
+        }
+        frameCount++;
+    }
+    
     // Store both original and processed frames
     {
         std::lock_guard<std::mutex> lock(g_frameMutex);

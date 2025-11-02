@@ -51,6 +51,8 @@ bool FaceFilterProcessor::Initialize() {
             return false;
         }
 
+        std::cout << "[FaceFilter] Face cascade loaded successfully" << std::endl;
+
         // Load accessory images
         glassesImage = LoadAccessoryImage("glasses.png");
         hatImage = LoadAccessoryImage("funny_hat.png");
@@ -80,8 +82,19 @@ Frame FaceFilterProcessor::ProcessFrame(const Frame& input) {
         std::vector<cv::Rect> faces;
         DetectFaces(input.data, faces);
 
+        std::cout << "[FaceFilter] Detected " << faces.size() << " faces in frame " << m_frameCounter << std::endl;
+
+        // Add status text to show filter is active
+        cv::putText(output.data, "FACE FILTER ACTIVE", cv::Point(10, 30), 
+                   cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
+
         // Apply effects to detected faces
         for (const auto& face : faces) {
+            std::cout << "[FaceFilter] Processing face at (" << face.x << "," << face.y << ") size " << face.width << "x" << face.height << std::endl;
+            
+            // Always draw a visible rectangle around detected faces for debugging
+            cv::rectangle(output.data, face, cv::Scalar(0, 255, 0), 3); // Green rectangle
+            
             if (m_glassesEnabled) {
                 AddVirtualGlasses(output.data, face);
             }
@@ -175,12 +188,19 @@ void FaceFilterProcessor::SetSpeechBubbleText(const std::string& text) {
 #ifdef HAVE_OPENCV
 
 void FaceFilterProcessor::DetectFaces(const cv::Mat& frame, std::vector<cv::Rect>& faces) {
+    if (faceCascade.empty()) {
+        std::cerr << "[FaceFilter] Face cascade not loaded!" << std::endl;
+        return;
+    }
+
     cv::Mat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
     cv::equalizeHist(gray, gray);
 
     // Detect faces
     faceCascade.detectMultiScale(gray, faces, 1.1, 3, 0, cv::Size(30, 30));
+    
+    std::cout << "[FaceFilter] Face detection completed, found " << faces.size() << " faces" << std::endl;
 }
 
 void FaceFilterProcessor::AddVirtualGlasses(cv::Mat& frame, const cv::Rect& face) {
