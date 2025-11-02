@@ -858,7 +858,7 @@ HRESULT MySubstituteOutputPin::GetMediaType(int iPosition, AM_MEDIA_TYPE *pmt)
     pvi->AvgTimePerFrame = FPS_30;  // 30 FPS
     pvi->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     pvi->bmiHeader.biWidth = 640;
-    pvi->bmiHeader.biHeight = 480;
+    pvi->bmiHeader.biHeight = -480;  // Negative height = top-down format (matches OpenCV)
     pvi->bmiHeader.biPlanes = 1;
     pvi->bmiHeader.biBitCount = 24;
     pvi->bmiHeader.biCompression = BI_RGB;
@@ -1185,7 +1185,7 @@ HRESULT CreateMediaType(AM_MEDIA_TYPE** ppmt, int width, int height)
     pvih->AvgTimePerFrame = FPS_30;
     pvih->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     pvih->bmiHeader.biWidth = width;
-    pvih->bmiHeader.biHeight = height;
+    pvih->bmiHeader.biHeight = -height;  // Negative height = top-down format (matches OpenCV)
     pvih->bmiHeader.biPlanes = 1;
     pvih->bmiHeader.biBitCount = 24;
     pvih->bmiHeader.biCompression = BI_RGB;

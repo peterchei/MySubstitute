@@ -315,14 +315,14 @@ bool VirtualCameraManager::WriteFrameToSharedMemory(const Frame& frame)
         cv::Mat rgbFrame;
         
         if (frame.data.channels() == 3) {
-            // Convert BGR (OpenCV) to RGB (DirectShow standard)
-            cv::cvtColor(frame.data, rgbFrame, cv::COLOR_BGR2RGB);
+            // Keep BGR format - DirectShow with top-down format expects BGR order
+            frame.data.copyTo(rgbFrame);
         } else if (frame.data.channels() == 4) {
-            // Convert BGRA to RGB
-            cv::cvtColor(frame.data, rgbFrame, cv::COLOR_BGRA2RGB);
+            // Convert BGRA to BGR
+            cv::cvtColor(frame.data, rgbFrame, cv::COLOR_BGRA2BGR);
         } else {
-            // Grayscale to RGB
-            cv::cvtColor(frame.data, rgbFrame, cv::COLOR_GRAY2RGB);
+            // Grayscale to BGR
+            cv::cvtColor(frame.data, rgbFrame, cv::COLOR_GRAY2BGR);
         }
         
         // Resize to match shared memory buffer size (640x480)
