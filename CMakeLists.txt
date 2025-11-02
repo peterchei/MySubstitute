@@ -115,3 +115,70 @@ set_target_properties(MySubstitute PROPERTIES
     WIN32_EXECUTABLE TRUE
     DEBUG_POSTFIX "_d"
 )
+
+#
+# DirectShow Virtual Camera DLL Target
+#
+add_library(MySubstituteVirtualCameraDLL SHARED
+    src/virtual_camera/virtual_camera_directshow.cpp
+    src/virtual_camera/virtual_camera_directshow.h
+    src/virtual_camera/directshow_dll_main.cpp
+    src/capture/frame.cpp
+    src/capture/frame.h
+)
+
+# Set DLL output name
+set_target_properties(MySubstituteVirtualCameraDLL PROPERTIES
+    OUTPUT_NAME "MySubstituteVirtualCamera"
+    SUFFIX ".dll"
+    DEBUG_POSTFIX "_d"
+)
+
+# Include directories for DLL
+target_include_directories(MySubstituteVirtualCameraDLL PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Link libraries for DLL
+target_link_libraries(MySubstituteVirtualCameraDLL
+    strmiids
+    ole32
+    oleaut32
+    uuid
+    winmm
+)
+
+# OpenCV for DLL - needed for video processing
+if(HAVE_OPENCV)
+    target_link_libraries(MySubstituteVirtualCameraDLL ${OpenCV_LIBS})
+    target_compile_definitions(MySubstituteVirtualCameraDLL PRIVATE HAVE_OPENCV=1)
+else()
+    target_compile_definitions(MySubstituteVirtualCameraDLL PRIVATE HAVE_OPENCV=0)
+endif()
+
+# DLL preprocessor definitions
+target_compile_definitions(MySubstituteVirtualCameraDLL PRIVATE
+    WIN32_LEAN_AND_MEAN
+    _CRT_SECURE_NO_WARNINGS
+    MYSUBSTITUTE_DLL_EXPORTS
+)
+
+# Use static runtime to eliminate dependency issues
+target_compile_options(MySubstituteVirtualCameraDLL PRIVATE
+    $<$<CONFIG:Release>:/MT>
+    $<$<CONFIG:Debug>:/MTd>
+)
+
+# Module definition file for DLL exports
+set_target_properties(MySubstituteVirtualCameraDLL PROPERTIES
+    LINK_FLAGS "/DEF:${CMAKE_SOURCE_DIR}/src/virtual_camera/MySubstituteVirtualCamera.def"
+)
+
+# Copy DLL to main executable directory
+add_custom_command(TARGET MySubstituteVirtualCameraDLL POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:MySubstituteVirtualCameraDLL>
+        $<TARGET_FILE_DIR:MySubstitute>/MySubstituteVirtualCamera.dll
+    COMMENT "Copying DirectShow DLL to application directory"
+)

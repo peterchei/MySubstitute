@@ -3,6 +3,8 @@
 #include <dvdmedia.h>
 #include <mmreg.h>
 #include <olectl.h>
+#include <ks.h>
+#include <ksmedia.h>
 #include <iostream>
 
 // DirectShow time units (100ns intervals)
@@ -298,12 +300,34 @@ STDMETHODIMP MySubstituteVirtualCameraFilter::Set(REFGUID guidPropSet, DWORD dwP
 
 STDMETHODIMP MySubstituteVirtualCameraFilter::Get(REFGUID guidPropSet, DWORD dwPropID, LPVOID pInstanceData, DWORD cbInstanceData, LPVOID pPropData, DWORD cbPropData, DWORD *pcbReturned)
 {
-    return E_NOTIMPL;
+    // Handle AMPROPSETID_Pin property set (required for pin capabilities)
+    if (guidPropSet == AMPROPSETID_Pin) {
+        if (dwPropID == AMPROPERTY_PIN_CATEGORY) {
+            if (pPropData && cbPropData >= sizeof(GUID)) {
+                // Identify as capture pin
+                *((GUID*)pPropData) = PIN_CATEGORY_CAPTURE;
+                if (pcbReturned) *pcbReturned = sizeof(GUID);
+                return S_OK;
+            }
+            return E_INVALIDARG;
+        }
+    }
+    
+    return E_PROP_SET_UNSUPPORTED;
 }
 
 STDMETHODIMP MySubstituteVirtualCameraFilter::QuerySupported(REFGUID guidPropSet, DWORD dwPropID, DWORD *pTypeSupport)
 {
-    return E_NOTIMPL;
+    if (guidPropSet == AMPROPSETID_Pin) {
+        if (dwPropID == AMPROPERTY_PIN_CATEGORY) {
+            if (pTypeSupport) {
+                *pTypeSupport = KSPROPERTY_SUPPORT_GET;
+            }
+            return S_OK;
+        }
+    }
+    
+    return E_PROP_SET_UNSUPPORTED;
 }
 
 // Frame management methods
@@ -342,17 +366,21 @@ MySubstituteOutputPin::MySubstituteOutputPin(MySubstituteVirtualCameraFilter* pF
     m_pFilter(pFilter),
     m_pConnectedPin(nullptr),
     m_bStreaming(false),
-    m_hStreamingEvent(nullptr)
+    m_hStreamingEvent(nullptr),
+    m_pMemAllocator(nullptr),
+    m_sampleCount(0)
 {
     InitializeCriticalSection(&m_PinLock);
     ZeroMemory(&m_mt, sizeof(AM_MEDIA_TYPE));
     
-    // Create default media type (RGB24, 640x480)
-    AM_MEDIA_TYPE* pTempMT = nullptr;
-    if (SUCCEEDED(CreateMediaType(&pTempMT, 640, 480))) {
-        CopyMediaType(&m_mt, pTempMT);
-        DeleteMediaType(pTempMT);
-    }
+    // Initialize basic media type structure without COM allocations
+    // Full initialization will happen lazily when needed
+    m_mt.majortype = MEDIATYPE_Video;
+    m_mt.subtype = MEDIASUBTYPE_RGB24;
+    m_mt.formattype = FORMAT_VideoInfo;
+    m_mt.bFixedSizeSamples = TRUE;
+    m_mt.bTemporalCompression = FALSE;
+    m_mt.lSampleSize = 640 * 480 * 3;
     
     m_hStreamingEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 }
@@ -374,7 +402,15 @@ MySubstituteOutputPin::~MySubstituteOutputPin()
         m_pConnectedPin->Release();
     }
     
-    DeleteMediaType(&m_mt);
+    if (m_pMemAllocator) {
+        m_pMemAllocator->Release();
+    }
+    
+    // Clean up media type format data if allocated
+    if (m_mt.pbFormat) {
+        CoTaskMemFree(m_mt.pbFormat);
+    }
+    
     DeleteCriticalSection(&m_PinLock);
 }
 
@@ -387,6 +423,8 @@ STDMETHODIMP MySubstituteOutputPin::QueryInterface(REFIID riid, void **ppv)
         *ppv = static_cast<IPin*>(this);
     } else if (riid == IID_IAMStreamConfig) {
         *ppv = static_cast<IAMStreamConfig*>(this);
+    } else if (riid == IID_IKsPropertySet) {
+        *ppv = static_cast<IKsPropertySet*>(this);
     } else {
         *ppv = nullptr;
         return E_NOINTERFACE;
@@ -437,6 +475,35 @@ STDMETHODIMP MySubstituteOutputPin::Connect(IPin *pReceivePin, const AM_MEDIA_TY
     if (SUCCEEDED(hr)) {
         m_pConnectedPin = pReceivePin;
         m_pConnectedPin->AddRef();
+        
+        // Negotiate memory allocator
+        IMemInputPin* pMemInputPin = nullptr;
+        hr = pReceivePin->QueryInterface(IID_IMemInputPin, (void**)&pMemInputPin);
+        if (SUCCEEDED(hr)) {
+            hr = pMemInputPin->GetAllocator(&m_pMemAllocator);
+            if (FAILED(hr)) {
+                // Create our own allocator
+                hr = CoCreateInstance(CLSID_MemoryAllocator, nullptr, CLSCTX_INPROC_SERVER,
+                                    IID_IMemAllocator, (void**)&m_pMemAllocator);
+            }
+            
+            if (SUCCEEDED(hr) && m_pMemAllocator) {
+                // Set allocator properties
+                ALLOCATOR_PROPERTIES props;
+                props.cBuffers = 3;
+                props.cbBuffer = 640 * 480 * 3; // RGB24
+                props.cbAlign = 1;
+                props.cbPrefix = 0;
+                
+                ALLOCATOR_PROPERTIES actualProps;
+                hr = m_pMemAllocator->SetProperties(&props, &actualProps);
+                if (SUCCEEDED(hr)) {
+                    hr = pMemInputPin->NotifyAllocator(m_pMemAllocator, FALSE);
+                }
+            }
+            
+            pMemInputPin->Release();
+        }
     }
     
     Unlock();
@@ -532,8 +599,10 @@ STDMETHODIMP MySubstituteOutputPin::QueryAccept(const AM_MEDIA_TYPE *pmt)
 
 STDMETHODIMP MySubstituteOutputPin::EnumMediaTypes(IEnumMediaTypes **ppEnum)
 {
-    // Simplified - return single media type
-    return E_NOTIMPL;
+    if (!ppEnum) return E_POINTER;
+    
+    // Create our media type enumerator
+    return CreateMediaTypeEnumerator(ppEnum);
 }
 
 STDMETHODIMP MySubstituteOutputPin::QueryInternalConnections(IPin **apPin, ULONG *nPin)
@@ -569,7 +638,12 @@ STDMETHODIMP MySubstituteOutputPin::SetFormat(AM_MEDIA_TYPE *pmt)
     Lock();
     HRESULT hr = CheckMediaType(pmt);
     if (SUCCEEDED(hr)) {
-        DeleteMediaType(&m_mt);
+        // Clean up existing format data
+        if (m_mt.pbFormat) {
+            CoTaskMemFree(m_mt.pbFormat);
+            m_mt.pbFormat = nullptr;
+        }
+        // Copy new media type
         CopyMediaType(&m_mt, pmt);
     }
     Unlock();
@@ -640,6 +714,44 @@ STDMETHODIMP MySubstituteOutputPin::GetStreamCaps(int iIndex, AM_MEDIA_TYPE **pp
     return S_OK;
 }
 
+// IKsPropertySet methods for pin
+STDMETHODIMP MySubstituteOutputPin::Set(REFGUID guidPropSet, DWORD dwPropID, LPVOID pInstanceData, DWORD cbInstanceData, LPVOID pPropData, DWORD cbPropData)
+{
+    return E_NOTIMPL;
+}
+
+STDMETHODIMP MySubstituteOutputPin::Get(REFGUID guidPropSet, DWORD dwPropID, LPVOID pInstanceData, DWORD cbInstanceData, LPVOID pPropData, DWORD cbPropData, DWORD *pcbReturned)
+{
+    // Handle AMPROPSETID_Pin property set (required for pin identification)
+    if (guidPropSet == AMPROPSETID_Pin) {
+        if (dwPropID == AMPROPERTY_PIN_CATEGORY) {
+            if (pPropData && cbPropData >= sizeof(GUID)) {
+                // Identify as capture output pin
+                *((GUID*)pPropData) = PIN_CATEGORY_CAPTURE;
+                if (pcbReturned) *pcbReturned = sizeof(GUID);
+                return S_OK;
+            }
+            return E_INVALIDARG;
+        }
+    }
+    
+    return E_PROP_SET_UNSUPPORTED;
+}
+
+STDMETHODIMP MySubstituteOutputPin::QuerySupported(REFGUID guidPropSet, DWORD dwPropID, DWORD *pTypeSupport)
+{
+    if (guidPropSet == AMPROPSETID_Pin) {
+        if (dwPropID == AMPROPERTY_PIN_CATEGORY) {
+            if (pTypeSupport) {
+                *pTypeSupport = KSPROPERTY_SUPPORT_GET;
+            }
+            return S_OK;
+        }
+    }
+    
+    return E_PROP_SET_UNSUPPORTED;
+}
+
 // Streaming control
 HRESULT MySubstituteOutputPin::Active()
 {
@@ -689,6 +801,54 @@ HRESULT MySubstituteOutputPin::CheckMediaType(const AM_MEDIA_TYPE *pmt)
     return S_OK;
 }
 
+HRESULT MySubstituteOutputPin::GetMediaType(int iPosition, AM_MEDIA_TYPE *pmt)
+{
+    if (!pmt) return E_POINTER;
+    if (iPosition < 0) return E_INVALIDARG;
+    if (iPosition > 0) return VFW_S_NO_MORE_ITEMS;  // We only support one media type
+    
+    // Initialize the media type
+    ZeroMemory(pmt, sizeof(AM_MEDIA_TYPE));
+    
+    // Set up RGB24 video format 640x480
+    pmt->majortype = MEDIATYPE_Video;
+    pmt->subtype = MEDIASUBTYPE_RGB24;
+    pmt->formattype = FORMAT_VideoInfo;
+    pmt->bFixedSizeSamples = TRUE;
+    pmt->bTemporalCompression = FALSE;
+    pmt->lSampleSize = 640 * 480 * 3;  // RGB24 = 3 bytes per pixel
+    
+    // Allocate and fill VIDEOINFOHEADER - this now happens safely after COM is initialized
+    VIDEOINFOHEADER* pvi = (VIDEOINFOHEADER*)CoTaskMemAlloc(sizeof(VIDEOINFOHEADER));
+    if (!pvi) return E_OUTOFMEMORY;
+    
+    ZeroMemory(pvi, sizeof(VIDEOINFOHEADER));
+    pvi->AvgTimePerFrame = FPS_30;  // 30 FPS
+    pvi->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    pvi->bmiHeader.biWidth = 640;
+    pvi->bmiHeader.biHeight = 480;
+    pvi->bmiHeader.biPlanes = 1;
+    pvi->bmiHeader.biBitCount = 24;
+    pvi->bmiHeader.biCompression = BI_RGB;
+    pvi->bmiHeader.biSizeImage = 640 * 480 * 3;
+    
+    pmt->pbFormat = (BYTE*)pvi;
+    pmt->cbFormat = sizeof(VIDEOINFOHEADER);
+    
+    return S_OK;
+}
+
+HRESULT MySubstituteOutputPin::CreateMediaTypeEnumerator(IEnumMediaTypes **ppEnum)
+{
+    if (!ppEnum) return E_POINTER;
+    
+    // Create a simple media type enumerator that returns our single media type
+    *ppEnum = new MySubstituteMediaTypeEnum(this);
+    if (!*ppEnum) return E_OUTOFMEMORY;
+    
+    return S_OK;
+}
+
 void MySubstituteOutputPin::StreamingThreadProc()
 {
     while (m_bStreaming) {
@@ -703,19 +863,89 @@ void MySubstituteOutputPin::StreamingThreadProc()
 HRESULT MySubstituteOutputPin::DeliverSample()
 {
     if (!m_pConnectedPin) return VFW_E_NOT_CONNECTED;
+    if (!m_pMemAllocator) return VFW_E_NO_ALLOCATOR;
     
-    // Get latest frame from filter
+    // Get latest frame from filter  
     Frame frame = m_pFilter->GetLatestFrame();
-    if (frame.data.empty()) return S_OK;
     
-    // Create media sample
-    IMemAllocator* pAllocator = nullptr;
+    // If no frame data, generate test pattern
+    if (frame.data.empty()) {
+        frame = GenerateTestFrame();
+    }
+    
+    // Get a media sample from allocator
     IMediaSample* pSample = nullptr;
+    HRESULT hr = m_pMemAllocator->GetBuffer(&pSample, nullptr, nullptr, 0);
+    if (FAILED(hr)) return hr;
     
-    // This is simplified - in a real implementation, you'd need to properly
-    // negotiate allocators and create samples with correct timing
+    // Get sample buffer
+    BYTE* pBuffer = nullptr;
+    hr = pSample->GetPointer(&pBuffer);
+    if (FAILED(hr)) {
+        pSample->Release();
+        return hr;
+    }
     
-    return S_OK;
+    // Get buffer size 
+    long bufferSize = pSample->GetSize();
+    
+    // Copy frame data to sample buffer
+#if defined(HAVE_OPENCV) && (HAVE_OPENCV == 1)
+    if (frame.width > 0 && frame.height > 0 && !frame.data.empty()) {
+        // Convert OpenCV Mat to RGB24 if needed
+        cv::Mat rgbFrame;
+        if (frame.data.channels() == 3) {
+            cv::cvtColor(frame.data, rgbFrame, cv::COLOR_BGR2RGB);
+        } else {
+            rgbFrame = frame.data;
+        }
+        
+        // Flip vertically for DirectShow (bottom-up DIB format)
+        cv::Mat flippedFrame;
+        cv::flip(rgbFrame, flippedFrame, 0);
+        
+        // Copy to buffer
+        int frameSize = flippedFrame.cols * flippedFrame.rows * flippedFrame.channels();
+        if (frameSize <= bufferSize) {
+            memcpy(pBuffer, flippedFrame.data, frameSize);
+            pSample->SetActualDataLength(frameSize);
+        } else {
+            // Frame too big, fill with test pattern
+            GenerateTestFrameData(pBuffer, bufferSize);
+            pSample->SetActualDataLength(bufferSize);
+        }
+    } else {
+        // No frame data, generate test pattern
+        GenerateTestFrameData(pBuffer, bufferSize);
+        pSample->SetActualDataLength(bufferSize);
+    }
+#else
+    // When OpenCV is not available, always generate test pattern
+    GenerateTestFrameData(pBuffer, bufferSize);
+    pSample->SetActualDataLength(bufferSize);
+#endif
+    
+    // Set sample timestamps (30 FPS)
+    REFERENCE_TIME startTime = m_sampleCount * 333333; // 100ns units
+    REFERENCE_TIME endTime = startTime + 333333;
+    pSample->SetTime(&startTime, &endTime);
+    
+    // Mark as sync point (key frame)
+    pSample->SetSyncPoint(TRUE);
+    
+    // Deliver the sample to IMemInputPin
+    IMemInputPin* pMemInputPin = nullptr;
+    hr = m_pConnectedPin->QueryInterface(IID_IMemInputPin, (void**)&pMemInputPin);
+    if (SUCCEEDED(hr)) {
+        hr = pMemInputPin->Receive(pSample);
+        pMemInputPin->Release();
+    }
+    
+    // Cleanup
+    pSample->Release();
+    m_sampleCount++;
+    
+    return hr;
 }
 
 //=============================================================================
@@ -807,6 +1037,58 @@ STDMETHODIMP MySubstitutePinEnum::Clone(IEnumPins **ppEnum)
 }
 
 //=============================================================================
+// Helper methods for MySubstituteOutputPin
+//=============================================================================
+
+Frame MySubstituteOutputPin::GenerateTestFrame()
+{
+    Frame testFrame;
+    testFrame.width = 640;
+    testFrame.height = 480;
+    testFrame.channels = 3;
+    
+#if HAVE_OPENCV
+    // Create a test pattern (colorful gradient)
+    cv::Mat testMat(480, 640, CV_8UC3);
+    for (int y = 0; y < 480; y++) {
+        for (int x = 0; x < 640; x++) {
+            int red = (x * 255) / 640;
+            int green = (y * 255) / 480;
+            int blue = ((x + y) * 255) / (640 + 480);
+            
+            testMat.at<cv::Vec3b>(y, x) = cv::Vec3b(blue, green, red);
+        }
+    }
+    
+    // Add text overlay
+    cv::putText(testMat, "MySubstitute Virtual Camera", 
+                cv::Point(50, 240), cv::FONT_HERSHEY_SIMPLEX, 
+                1.0, cv::Scalar(255, 255, 255), 2);
+    
+    testFrame.data = testMat;
+#endif
+    
+    return testFrame;
+}
+
+void MySubstituteOutputPin::GenerateTestFrameData(BYTE* pBuffer, long bufferSize)
+{
+    if (!pBuffer || bufferSize < (640 * 480 * 3)) return;
+    
+    // Generate simple test pattern directly to buffer
+    for (int y = 0; y < 480; y++) {
+        for (int x = 0; x < 640; x++) {
+            int index = (y * 640 + x) * 3;
+            if (index + 2 < bufferSize) {
+                pBuffer[index + 0] = (BYTE)((x * 255) / 640);     // Red
+                pBuffer[index + 1] = (BYTE)((y * 255) / 480);     // Green  
+                pBuffer[index + 2] = (BYTE)(((x + y) * 255) / (640 + 480)); // Blue
+            }
+        }
+    }
+}
+
+//=============================================================================
 // Helper functions
 //=============================================================================
 
@@ -872,5 +1154,87 @@ HRESULT CopyMediaType(AM_MEDIA_TYPE* pmtTarget, const AM_MEDIA_TYPE* pmtSource)
         memcpy(pmtTarget->pbFormat, pmtSource->pbFormat, pmtSource->cbFormat);
     }
     
+    return S_OK;
+}
+
+//
+// MySubstituteMediaTypeEnum Implementation
+//
+MySubstituteMediaTypeEnum::MySubstituteMediaTypeEnum(MySubstituteOutputPin* pPin) 
+    : m_cRef(1), m_pPin(pPin), m_Position(0) 
+{
+    if (m_pPin) m_pPin->AddRef();
+}
+
+MySubstituteMediaTypeEnum::~MySubstituteMediaTypeEnum() 
+{
+    if (m_pPin) m_pPin->Release();
+}
+
+STDMETHODIMP MySubstituteMediaTypeEnum::QueryInterface(REFIID riid, void **ppv) 
+{
+    if (riid == IID_IUnknown || riid == IID_IEnumMediaTypes) {
+        *ppv = this;
+        AddRef();
+        return S_OK;
+    }
+    return E_NOINTERFACE;
+}
+
+STDMETHODIMP_(ULONG) MySubstituteMediaTypeEnum::AddRef() 
+{ 
+    return InterlockedIncrement(&m_cRef); 
+}
+
+STDMETHODIMP_(ULONG) MySubstituteMediaTypeEnum::Release() 
+{
+    LONG cRef = InterlockedDecrement(&m_cRef);
+    if (cRef == 0) delete this;
+    return cRef;
+}
+
+STDMETHODIMP MySubstituteMediaTypeEnum::Next(ULONG cMediaTypes, AM_MEDIA_TYPE **ppMediaTypes, ULONG *pcFetched) 
+{
+    if (!ppMediaTypes) return E_POINTER;
+    if (cMediaTypes == 0) return S_OK;
+    
+    ULONG fetched = 0;
+    
+    if (m_Position == 0 && cMediaTypes > 0) {
+        AM_MEDIA_TYPE* pmt = (AM_MEDIA_TYPE*)CoTaskMemAlloc(sizeof(AM_MEDIA_TYPE));
+        if (!pmt) return E_OUTOFMEMORY;
+        
+        HRESULT hr = m_pPin->GetMediaType(0, pmt);
+        if (SUCCEEDED(hr)) {
+            ppMediaTypes[0] = pmt;
+            fetched = 1;
+            m_Position = 1;
+        } else {
+            CoTaskMemFree(pmt);
+            return hr;
+        }
+    }
+    
+    if (pcFetched) *pcFetched = fetched;
+    return (fetched == cMediaTypes) ? S_OK : S_FALSE;
+}
+
+STDMETHODIMP MySubstituteMediaTypeEnum::Skip(ULONG cMediaTypes) 
+{
+    m_Position += cMediaTypes;
+    return (m_Position <= 1) ? S_OK : S_FALSE;
+}
+
+STDMETHODIMP MySubstituteMediaTypeEnum::Reset() 
+{
+    m_Position = 0;
+    return S_OK;
+}
+
+STDMETHODIMP MySubstituteMediaTypeEnum::Clone(IEnumMediaTypes **ppEnum) 
+{
+    if (!ppEnum) return E_POINTER;
+    *ppEnum = new MySubstituteMediaTypeEnum(m_pPin);
+    (*ppEnum)->Skip(m_Position);
     return S_OK;
 }

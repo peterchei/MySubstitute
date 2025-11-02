@@ -18,6 +18,7 @@ DEFINE_GUID(CLSID_MySubstituteVirtualCamera,
 // Forward declarations
 class MySubstituteVirtualCameraFilter;
 class MySubstituteOutputPin;
+class MySubstituteMediaTypeEnum;
 
 /**
  * Complete DirectShow Virtual Camera Filter Implementation
@@ -98,7 +99,7 @@ public:
  * DirectShow Output Pin Implementation
  * Delivers processed video frames to applications
  */
-class MySubstituteOutputPin : public IPin, public IAMStreamConfig
+class MySubstituteOutputPin : public IPin, public IAMStreamConfig, public IKsPropertySet
 {
 private:
     volatile LONG m_cRef;
@@ -111,6 +112,10 @@ private:
     std::thread m_StreamingThread;
     std::atomic<bool> m_bStreaming;
     HANDLE m_hStreamingEvent;
+    
+    // Memory allocator for samples
+    IMemAllocator* m_pMemAllocator;
+    REFERENCE_TIME m_sampleCount;
     
 public:
     MySubstituteOutputPin(MySubstituteVirtualCameraFilter* pFilter);
@@ -144,6 +149,11 @@ public:
     STDMETHODIMP GetNumberOfCapabilities(int *piCount, int *piSize);
     STDMETHODIMP GetStreamCaps(int iIndex, AM_MEDIA_TYPE **ppmt, BYTE *pSCC);
     
+    // IKsPropertySet methods
+    STDMETHODIMP Set(REFGUID guidPropSet, DWORD dwPropID, LPVOID pInstanceData, DWORD cbInstanceData, LPVOID pPropData, DWORD cbPropData);
+    STDMETHODIMP Get(REFGUID guidPropSet, DWORD dwPropID, LPVOID pInstanceData, DWORD cbInstanceData, LPVOID pPropData, DWORD cbPropData, DWORD *pcbReturned);
+    STDMETHODIMP QuerySupported(REFGUID guidPropSet, DWORD dwPropID, DWORD *pTypeSupport);
+    
     // Streaming control
     HRESULT Active();
     HRESULT Inactive();
@@ -154,9 +164,15 @@ public:
 private:
     // Helper methods
     HRESULT CheckMediaType(const AM_MEDIA_TYPE *pmt);
-    HRESULT GetMediaType(int iPosition, AM_MEDIA_TYPE *pmt);
+    HRESULT CreateMediaTypeEnumerator(IEnumMediaTypes **ppEnum);
     void StreamingThreadProc();
     HRESULT DeliverSample();
+    Frame GenerateTestFrame();
+    void GenerateTestFrameData(BYTE* pBuffer, long bufferSize);
+
+public:
+    // Public method for media type enumeration
+    HRESULT GetMediaType(int iPosition, AM_MEDIA_TYPE *pmt);
     
     // Lock methods
     void Lock() { EnterCriticalSection(&m_PinLock); }
@@ -187,6 +203,32 @@ public:
     STDMETHODIMP Skip(ULONG cPins);
     STDMETHODIMP Reset();
     STDMETHODIMP Clone(IEnumPins **ppEnum);
+};
+
+/**
+ * Media Type Enumerator for DirectShow
+ */
+class MySubstituteMediaTypeEnum : public IEnumMediaTypes
+{
+private:
+    volatile LONG m_cRef;
+    MySubstituteOutputPin* m_pPin;
+    int m_Position;
+    
+public:
+    MySubstituteMediaTypeEnum(MySubstituteOutputPin* pPin);
+    virtual ~MySubstituteMediaTypeEnum();
+    
+    // IUnknown methods
+    STDMETHODIMP QueryInterface(REFIID riid, void **ppv);
+    STDMETHODIMP_(ULONG) AddRef();
+    STDMETHODIMP_(ULONG) Release();
+    
+    // IEnumMediaTypes methods
+    STDMETHODIMP Next(ULONG cMediaTypes, AM_MEDIA_TYPE **ppMediaTypes, ULONG *pcFetched);
+    STDMETHODIMP Skip(ULONG cMediaTypes);
+    STDMETHODIMP Reset();
+    STDMETHODIMP Clone(IEnumMediaTypes **ppEnum);
 };
 
 // Helper functions for media type management

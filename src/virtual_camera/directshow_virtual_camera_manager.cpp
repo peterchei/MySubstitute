@@ -51,55 +51,29 @@ std::wstring DirectShowVirtualCameraManager::GetDLLPath() const
 
 bool DirectShowVirtualCameraManager::BuildDirectShowDLL()
 {
-    std::wcout << L"[DirectShow] 🔧 Building DirectShow DLL..." << std::endl;
+    std::wcout << L"[DirectShow] 🔧 Checking DirectShow DLL..." << std::endl;
     
-    // Build the DLL using CMake
-    std::wstring buildCommand = L"cd /d \"";
-    
-    // Get application directory
-    wchar_t modulePath[MAX_PATH];
-    GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
-    std::wstring appDir(modulePath);
-    size_t lastSlash = appDir.find_last_of(L'\\');
-    if (lastSlash != std::wstring::npos) {
-        appDir = appDir.substr(0, lastSlash);
-        // Go up to project root (from build/bin/Release to project root)
-        size_t pos = appDir.find(L"\\build\\");
-        if (pos != std::wstring::npos) {
-            appDir = appDir.substr(0, pos);
-        }
+    // Check if DLL already exists (should be built alongside main app)
+    if (PathFileExistsW(m_dllPath.c_str())) {
+        std::wcout << L"[DirectShow] ✅ DLL already exists: " << m_dllPath << std::endl;
+        return true;
     }
     
-    buildCommand += appDir + L"\" && cmake -B build_dll -S . -f CMakeLists_DirectShow.txt && cmake --build build_dll --config Release";
+    std::wcout << L"[DirectShow] ❌ DLL not found: " << m_dllPath << std::endl;
+    std::wcout << L"[DirectShow] 📋 The DirectShow DLL should be built automatically with the main application." << std::endl;
+    std::wcout << L"[DirectShow] 💡 Try rebuilding the entire project to generate the DLL." << std::endl;
     
-    std::wcout << L"[DirectShow] Executing: " << buildCommand << std::endl;
+    std::wstring message = L"⚠️ DirectShow DLL Not Found\n\n"
+                          L"The MySubstituteVirtualCamera.dll was not found.\n\n"
+                          L"💡 Solution:\n"
+                          L"1. Close MySubstitute\n"
+                          L"2. Rebuild the project completely\n"
+                          L"3. The DirectShow DLL should be built automatically\n"
+                          L"4. Restart MySubstitute and try again\n\n"
+                          L"📂 Expected location:\n" + m_dllPath;
+                          
+    MessageBoxW(nullptr, message.c_str(), L"DLL Build Required", MB_OK | MB_ICONWARNING);
     
-    // Execute build command
-    STARTUPINFOW si = { sizeof(si) };
-    PROCESS_INFORMATION pi = {};
-    
-    if (CreateProcessW(nullptr, const_cast<LPWSTR>(buildCommand.c_str()),
-                      nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
-                      nullptr, appDir.c_str(), &si, &pi)) {
-        
-        WaitForSingleObject(pi.hProcess, 30000); // 30 second timeout
-        
-        DWORD exitCode = 0;
-        GetExitCodeProcess(pi.hProcess, &exitCode);
-        
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-        
-        if (exitCode == 0) {
-            std::wcout << L"[DirectShow] ✅ DLL build successful!" << std::endl;
-            return true;
-        } else {
-            std::wcout << L"[DirectShow] ❌ DLL build failed with exit code: " << exitCode << std::endl;
-            return false;
-        }
-    }
-    
-    std::wcout << L"[DirectShow] ❌ Failed to start build process" << std::endl;
     return false;
 }
 

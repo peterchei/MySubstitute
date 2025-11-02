@@ -3,6 +3,7 @@
 #include <olectl.h>
 #include <initguid.h>
 #include <iostream>
+#include <fstream>
 
 //
 // DLL Entry Point and COM Registration
@@ -133,13 +134,21 @@ STDAPI DllRegisterServer(void)
         return HRESULT_FROM_WIN32(GetLastError());
     }
     
-    std::wcout << L"[DirectShow DLL] Registering: " << modulePath << std::endl;
+    // Log to file instead of console (regsvr32 has no console)
+    std::wofstream logFile(L"C:\\temp\\directshow_registration.log", std::ios::app);
+    logFile << L"[DirectShow DLL] Registering: " << modulePath << std::endl;
+    logFile.flush();
     
     // Register CLSID in HKEY_CLASSES_ROOT
+    logFile << L"[DirectShow DLL] Step 1: Creating CLSID key..." << std::endl;
+    logFile.flush();
     std::wstring clsidKey = L"CLSID\\{B3F3A1C4-8F9E-4A2D-9B5C-7E6F8D4C9A3B}";
     result = RegCreateKeyExW(HKEY_CLASSES_ROOT, clsidKey.c_str(), 0, nullptr, 
                            REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr);
-    if (result != ERROR_SUCCESS) return HRESULT_FROM_WIN32(result);
+    if (result != ERROR_SUCCESS) {
+        logFile << L"[DirectShow DLL] ERROR: Failed to create CLSID key, error: " << result << std::endl;
+        return HRESULT_FROM_WIN32(result);
+    }
     
     // Friendly name
     std::wstring friendlyName = L"MySubstitute Virtual Camera";
@@ -148,10 +157,15 @@ STDAPI DllRegisterServer(void)
     RegCloseKey(hKey);
     
     // InprocServer32 - Point to our DLL
+    logFile << L"[DirectShow DLL] Step 2: Creating InprocServer32..." << std::endl;
+    logFile.flush();
     std::wstring inprocKey = clsidKey + L"\\InprocServer32";
     result = RegCreateKeyExW(HKEY_CLASSES_ROOT, inprocKey.c_str(), 0, nullptr,
                            REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr);
-    if (result != ERROR_SUCCESS) return HRESULT_FROM_WIN32(result);
+    if (result != ERROR_SUCCESS) {
+        logFile << L"[DirectShow DLL] ERROR: Failed to create InprocServer32, error: " << result << std::endl;
+        return HRESULT_FROM_WIN32(result);
+    }
     
     RegSetValueExW(hKey, nullptr, 0, REG_SZ, (BYTE*)modulePath, 
                   (DWORD)((wcslen(modulePath) + 1) * sizeof(wchar_t)));
@@ -160,10 +174,15 @@ STDAPI DllRegisterServer(void)
     
     // Register in DirectShow video input device category
     // CLSID_VideoInputDeviceCategory = {860BB310-5D01-11d0-BD3B-00A0C911CE86}
+    logFile << L"[DirectShow DLL] Step 3: Creating DirectShow category..." << std::endl;
+    logFile.flush();
     std::wstring categoryKey = L"CLSID\\{860BB310-5D01-11d0-BD3B-00A0C911CE86}\\Instance\\{B3F3A1C4-8F9E-4A2D-9B5C-7E6F8D4C9A3B}";
     result = RegCreateKeyExW(HKEY_CLASSES_ROOT, categoryKey.c_str(), 0, nullptr,
                            REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr);
-    if (result != ERROR_SUCCESS) return HRESULT_FROM_WIN32(result);
+    if (result != ERROR_SUCCESS) {
+        logFile << L"[DirectShow DLL] ERROR: Failed to create category key, error: " << result << std::endl;
+        return HRESULT_FROM_WIN32(result);
+    }
     
     RegSetValueExW(hKey, L"FriendlyName", 0, REG_SZ, (BYTE*)friendlyName.c_str(),
                   (DWORD)((friendlyName.length() + 1) * sizeof(wchar_t)));
@@ -175,14 +194,16 @@ STDAPI DllRegisterServer(void)
     
     RegCloseKey(hKey);
     
-    std::wcout << L"[DirectShow DLL] ✅ Registration completed successfully!" << std::endl;
+    logFile << L"[DirectShow DLL] Step 4: Registration completed successfully!" << std::endl;
+    logFile.flush();
     return S_OK;
 }
 
 // Unregister the COM server
 STDAPI DllUnregisterServer(void)
 {
-    std::wcout << L"[DirectShow DLL] Unregistering virtual camera..." << std::endl;
+    std::wofstream logFile(L"C:\\temp\\directshow_registration.log", std::ios::app);
+    logFile << L"[DirectShow DLL] Unregistering virtual camera..." << std::endl;
     
     // Delete from video input device category
     RegDeleteTreeW(HKEY_CLASSES_ROOT, 
@@ -191,7 +212,7 @@ STDAPI DllUnregisterServer(void)
     // Delete CLSID registration
     RegDeleteTreeW(HKEY_CLASSES_ROOT, L"CLSID\\{B3F3A1C4-8F9E-4A2D-9B5C-7E6F8D4C9A3B}");
     
-    std::wcout << L"[DirectShow DLL] ✅ Unregistration completed!" << std::endl;
+    logFile << L"[DirectShow DLL] ✅ Unregistration completed!" << std::endl;
     return S_OK;
 }
 
