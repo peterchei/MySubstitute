@@ -9,6 +9,7 @@
 #include "ai/ai_processor.h"
 #include "ai/passthrough_processor.h"
 #include "ai/face_filter_processor.h"
+#include "ai/cartoon_filter_processor.h"
 #include "virtual_camera/virtual_camera_filter.h"
 #include "virtual_camera/virtual_camera_manager.h"
 #include "virtual_camera/camera_diagnostics.h"
@@ -60,10 +61,15 @@ void OnFilterChanged(const std::string& filterName) {
         g_processor->Initialize();
         std::cout << "[OnFilterChanged] Virtual background not implemented, using passthrough" << std::endl;
     } else if (filterName == "cartoon") {
-        // TODO: Implement cartoon processor
-        g_processor = std::make_unique<PassthroughProcessor>();
-        g_processor->Initialize();
-        std::cout << "[OnFilterChanged] Cartoon not implemented, using passthrough" << std::endl;
+        // Switch to cartoon filter processor
+        g_processor = std::make_unique<CartoonFilterProcessor>();
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize CartoonFilterProcessor, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
     } else if (filterName.find("speech_text:") == 0) {
         // Update speech bubble text
         if (auto faceFilter = dynamic_cast<FaceFilterProcessor*>(g_processor.get())) {

@@ -5,12 +5,14 @@ set(AI_SOURCES
     ai_processor.cpp
     passthrough_processor.cpp
     face_filter_processor.cpp
+    cartoon_filter_processor.cpp
 )
 
 set(AI_HEADERS
     ai_processor.h
     passthrough_processor.h
     face_filter_processor.h
+    cartoon_filter_processor.h
 )
 
 add_library(AIProcessor STATIC

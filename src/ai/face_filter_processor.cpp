@@ -1,6 +1,7 @@
 #include "face_filter_processor.h"
 #include <iostream>
 #include <filesystem>
+#include <cmath>
 
 #ifdef HAVE_OPENCV
 #include <opencv2/objdetect.hpp>
@@ -204,80 +205,167 @@ void FaceFilterProcessor::DetectFaces(const cv::Mat& frame, std::vector<cv::Rect
 }
 
 void FaceFilterProcessor::AddVirtualGlasses(cv::Mat& frame, const cv::Rect& face) {
-    if (glassesImage.empty()) return;
+    // Calculate glass dimensions based on face size
+    int eyeY = face.y + face.height * 0.35;
+    int glassesWidth = face.width * 0.7;
+    int glassesHeight = glassesWidth * 0.4;
+    int glassesX = face.x + face.width * 0.15;
+    int glassesY = eyeY - glassesHeight / 2;
 
-    // Position glasses on the face (centered on eyes area)
-    int glassesWidth = face.width * 0.8;
-    int glassesHeight = glassesWidth * glassesImage.rows / glassesImage.cols;
+    // Draw left lens
+    cv::ellipse(frame, 
+                cv::Point(glassesX + glassesWidth / 4, glassesY + glassesHeight / 2),
+                cv::Size(glassesWidth / 4, glassesHeight / 2),
+                0, 0, 360, cv::Scalar(100, 200, 255), 3);  // Cyan outline
+    cv::ellipse(frame, 
+                cv::Point(glassesX + glassesWidth / 4, glassesY + glassesHeight / 2),
+                cv::Size(glassesWidth / 4 - 3, glassesHeight / 2 - 3),
+                0, 0, 360, cv::Scalar(100, 200, 255), -1);  // Filled cyan
 
-    cv::Point position(
-        face.x + face.width * 0.1,
-        face.y + face.height * 0.35
-    );
+    // Draw right lens
+    cv::ellipse(frame, 
+                cv::Point(glassesX + 3 * glassesWidth / 4, glassesY + glassesHeight / 2),
+                cv::Size(glassesWidth / 4, glassesHeight / 2),
+                0, 0, 360, cv::Scalar(100, 200, 255), 3);  // Cyan outline
+    cv::ellipse(frame, 
+                cv::Point(glassesX + 3 * glassesWidth / 4, glassesY + glassesHeight / 2),
+                cv::Size(glassesWidth / 4 - 3, glassesHeight / 2 - 3),
+                0, 0, 360, cv::Scalar(100, 200, 255), -1);  // Filled cyan
 
-    // Resize glasses to fit
-    cv::Mat resizedGlasses;
-    cv::resize(glassesImage, resizedGlasses, cv::Size(glassesWidth, glassesHeight));
+    // Draw bridge between lenses
+    int bridgeY = glassesY + glassesHeight / 2;
+    cv::line(frame,
+             cv::Point(glassesX + glassesWidth / 4 + glassesWidth / 8, bridgeY),
+             cv::Point(glassesX + 3 * glassesWidth / 4 - glassesWidth / 8, bridgeY),
+             cv::Scalar(100, 200, 255), 2);
 
-    OverlayImage(frame, resizedGlasses, position);
+    // Add shine effect (animation based on frame counter)
+    int shineOffset = (m_frameCounter / 5) % (glassesWidth / 4);
+    cv::line(frame,
+             cv::Point(glassesX + glassesWidth / 4 - glassesWidth / 8 + shineOffset, glassesY + glassesHeight / 4),
+             cv::Point(glassesX + glassesWidth / 4 - glassesWidth / 8 + shineOffset + glassesWidth / 8, glassesY + glassesHeight / 4 - glassesHeight / 8),
+             cv::Scalar(255, 255, 200), 2);  // Light yellow shine
 }
 
 void FaceFilterProcessor::AddFunnyHat(cv::Mat& frame, const cv::Rect& face) {
-    if (hatImage.empty()) return;
+    // Draw a party hat above the face
+    int hatX = face.x + face.width / 2;
+    int hatY = face.y - face.height * 0.3;
+    int hatWidth = face.width * 0.6;
+    int hatHeight = face.height * 0.4;
 
-    // Position hat above the face
-    int hatWidth = face.width * 1.2;
-    int hatHeight = hatWidth * hatImage.rows / hatImage.cols;
+    // Hat color changes based on frame counter for animation
+    int colorCycle = (m_frameCounter / 10) % 3;
+    cv::Scalar hatColor;
+    switch (colorCycle) {
+        case 0: hatColor = cv::Scalar(0, 255, 255);    break;  // Cyan
+        case 1: hatColor = cv::Scalar(255, 0, 255);    break;  // Magenta
+        case 2: hatColor = cv::Scalar(255, 255, 0);    break;  // Yellow
+        default: hatColor = cv::Scalar(0, 255, 255);   break;  // Cyan
+    }
 
-    cv::Point position(
-        face.x + face.width * 0.5 - hatWidth * 0.5,
-        face.y - hatHeight * 0.3
-    );
+    // Draw hat body (triangle)
+    std::vector<cv::Point> hatPoints = {
+        cv::Point(hatX, hatY + hatHeight),           // Bottom middle
+        cv::Point(hatX - hatWidth / 2, hatY),        // Top left
+        cv::Point(hatX + hatWidth / 2, hatY)         // Top right
+    };
+    cv::fillConvexPoly(frame, hatPoints, hatColor);
+    std::vector<std::vector<cv::Point>> hatPointsVec = {hatPoints};
+    cv::polylines(frame, hatPointsVec, true, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);  // Black outline
 
-    // Resize hat to fit
-    cv::Mat resizedHat;
-    cv::resize(hatImage, resizedHat, cv::Size(hatWidth, hatHeight));
+    // Draw hat base
+    cv::rectangle(frame,
+                  cv::Point(hatX - hatWidth / 2 - 5, hatY + hatHeight - 10),
+                  cv::Point(hatX + hatWidth / 2 + 5, hatY + hatHeight + 5),
+                  hatColor, -1);
+    cv::rectangle(frame,
+                  cv::Point(hatX - hatWidth / 2 - 5, hatY + hatHeight - 10),
+                  cv::Point(hatX + hatWidth / 2 + 5, hatY + hatHeight + 5),
+                  cv::Scalar(0, 0, 0), 2);
 
-    OverlayImage(frame, resizedHat, position);
+    // Draw pom-pom on top (bobbing animation)
+    int pompomOffset = (int)(3 * sin(m_frameCounter * 0.1));  // Sine wave bob
+    int pompomRadius = hatWidth / 8;
+    cv::circle(frame,
+               cv::Point(hatX, hatY - pompomRadius + pompomOffset),
+               pompomRadius,
+               cv::Scalar(255, 100, 100), -1);  // Red pom-pom
+    cv::circle(frame,
+               cv::Point(hatX, hatY - pompomRadius + pompomOffset),
+               pompomRadius,
+               cv::Scalar(0, 0, 0), 2);  // Black outline
 }
 
 void FaceFilterProcessor::AddSpeechBubble(cv::Mat& frame, const cv::Rect& face, const std::string& text) {
+    if (text.empty()) return;
+
     // Position speech bubble above the face
-    cv::Point bubblePosition(face.x + face.width / 2, face.y - 20);
+    int bubbleX = face.x + face.width / 2;
+    int bubbleY = face.y - 30;
 
-    // Draw speech bubble background
-    int bubbleWidth = std::max(150, static_cast<int>(text.length() * 12));
-    int bubbleHeight = 40;
+    // Calculate bubble size based on text length
+    int bubbleWidth = std::max(120, static_cast<int>(text.length() * 10 + 20));
+    int bubbleHeight = 50;
 
-    cv::Rect bubbleRect(
-        bubblePosition.x - bubbleWidth / 2,
-        bubblePosition.y - bubbleHeight,
-        bubbleWidth,
-        bubbleHeight
-    );
+    // Clamp to frame boundaries
+    int drawX = bubbleX - bubbleWidth / 2;
+    int drawY = bubbleY - bubbleHeight;
+    
+    if (drawX < 10) drawX = 10;
+    if (drawY < 10) drawY = 10;
+    if (drawX + bubbleWidth > frame.cols - 10) drawX = frame.cols - bubbleWidth - 10;
 
-    // Draw rounded rectangle for bubble
-    cv::Scalar bubbleColor(255, 255, 255); // White background
-    cv::Scalar textColor(0, 0, 0); // Black text
+    // Draw bubble background with gradient effect
+    cv::Scalar bubbleBG = cv::Scalar(255, 255, 200);    // Light yellow
+    cv::Scalar bubbleBorder = cv::Scalar(0, 0, 0);      // Black border
+    cv::Scalar textColor = cv::Scalar(0, 0, 0);         // Black text
 
-    cv::rectangle(frame, bubbleRect, bubbleColor, cv::FILLED);
-    cv::rectangle(frame, bubbleRect, cv::Scalar(0, 0, 0), 2); // Black border
+    // Draw filled rectangle
+    cv::rectangle(frame,
+                  cv::Point(drawX, drawY),
+                  cv::Point(drawX + bubbleWidth, drawY + bubbleHeight),
+                  bubbleBG, -1);
 
-    // Add text
-    cv::putText(frame, text,
-                cv::Point(bubbleRect.x + 10, bubbleRect.y + bubbleRect.height - 10),
-                cv::FONT_HERSHEY_SIMPLEX, 0.7, textColor, 2);
+    // Draw border
+    cv::rectangle(frame,
+                  cv::Point(drawX, drawY),
+                  cv::Point(drawX + bubbleWidth, drawY + bubbleHeight),
+                  bubbleBorder, 2);
 
-    // Draw pointer to face
-    cv::Point pointerPoints[3] = {
-        cv::Point(bubblePosition.x, bubblePosition.y),
-        cv::Point(bubblePosition.x - 10, bubblePosition.y - 10),
-        cv::Point(bubblePosition.x + 10, bubblePosition.y - 10)
+    // Draw pointer triangle to face
+    int pointerX = face.x + face.width / 2;
+    int pointerY = bubbleY + bubbleHeight;
+    
+    std::vector<cv::Point> pointerPoints = {
+        cv::Point(pointerX, pointerY + 15),
+        cv::Point(pointerX - 10, pointerY),
+        cv::Point(pointerX + 10, pointerY)
     };
+    cv::fillConvexPoly(frame, pointerPoints, bubbleBG);
+    std::vector<std::vector<cv::Point>> pointerPointsVec = {pointerPoints};
+    cv::polylines(frame, pointerPointsVec, true, bubbleBorder, 2);
 
-    cv::fillConvexPoly(frame, pointerPoints, 3, bubbleColor);
-    std::vector<std::vector<cv::Point>> pointerContours = {std::vector<cv::Point>(pointerPoints, pointerPoints + 3)};
-    cv::polylines(frame, pointerContours, true, cv::Scalar(0, 0, 0), 2);
+    // Add text with wrapping
+    std::string displayText = text;
+    if (displayText.length() > 20) {
+        displayText = displayText.substr(0, 17) + "...";
+    }
+
+    cv::putText(frame, displayText,
+                cv::Point(drawX + 10, drawY + bubbleHeight - 12),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5, textColor, 1);
+
+    // Add animated dots (pulsing effect)
+    int pulse = (m_frameCounter / 5) % 4;
+    std::string dots = "";
+    for (int i = 0; i < pulse; i++) dots += ".";
+    
+    if (!dots.empty()) {
+        cv::putText(frame, dots,
+                    cv::Point(drawX + bubbleWidth - 30, drawY + bubbleHeight - 12),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(100, 100, 255), 1);
+    }
 }
 
 cv::Mat FaceFilterProcessor::LoadAccessoryImage(const std::string& filename) {
