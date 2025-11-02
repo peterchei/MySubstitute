@@ -11,7 +11,6 @@
 #include "virtual_camera/virtual_camera_filter.h"
 #include "virtual_camera/virtual_camera_manager.h"
 #include "virtual_camera/camera_diagnostics.h"
-#include "virtual_camera/simple_virtual_camera_new.h"
 #include "virtual_camera/simple_registry_virtual_camera.h"
 #include "virtual_camera/media_foundation_camera.h"
 #include "virtual_camera/directshow_virtual_camera_manager.h"
@@ -25,7 +24,6 @@ std::unique_ptr<CameraCapture> g_camera;
 std::unique_ptr<PassthroughProcessor> g_processor;
 std::unique_ptr<VirtualCameraFilter> g_virtualCamera;
 std::unique_ptr<VirtualCameraManager> g_virtualCameraManager;
-std::unique_ptr<SimpleVirtualCamera> g_simpleVirtualCamera;
 std::unique_ptr<PreviewWindowManager> g_previewManager;
 bool g_running = true;
 Frame g_lastProcessedFrame;  // Store the latest processed frame for preview
@@ -46,8 +44,6 @@ void OnStopCamera();
 void OnReleaseCamera();
 void OnRegisterVirtualCamera();
 void OnUnregisterVirtualCamera();
-void OnStartVirtualCamera();
-void OnStopVirtualCamera();
 void OnExit();
 void ShowStatusMessage();
 Frame GetLatestProcessedFrame();  // Callback for preview window
@@ -129,8 +125,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_RELEASE_CAMERA, OnReleaseCamera);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_REGISTER_VIRTUAL_CAMERA, OnRegisterVirtualCamera);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_UNREGISTER_VIRTUAL_CAMERA, OnUnregisterVirtualCamera);
-    g_trayManager->SetMenuCallback(SystemTrayManager::MENU_START_VIRTUAL_CAMERA, OnStartVirtualCamera);
-    g_trayManager->SetMenuCallback(SystemTrayManager::MENU_STOP_VIRTUAL_CAMERA, OnStopVirtualCamera);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_SETTINGS, OnSettings);
     g_trayManager->SetMenuCallback(SystemTrayManager::MENU_EXIT, OnExit);
 
@@ -203,14 +197,6 @@ bool InitializeComponents() {
         // Initialize new DirectShow virtual camera manager
         g_virtualCameraManager = std::make_unique<VirtualCameraManager>();
         std::cout << "[Main] ✓ Virtual camera manager initialized" << std::endl;
-
-        // Initialize simple virtual camera
-        g_simpleVirtualCamera = std::make_unique<SimpleVirtualCamera>();
-        if (g_simpleVirtualCamera->Initialize()) {
-            std::cout << "[Main] ✓ Simple virtual camera initialized" << std::endl;
-        } else {
-            std::cout << "[Main] ⚠️ Simple virtual camera initialization failed" << std::endl;
-        }
 
         return true;
     } catch (const std::exception&) {
@@ -469,68 +455,7 @@ void OnUnregisterVirtualCamera() {
     }
 }
 
-void OnStartVirtualCamera() {
-    std::cout << "[Main] Starting DirectShow virtual camera..." << std::endl;
-    
-    // Check if virtual camera is registered first
-    DirectShowVirtualCameraManager directShowManager;
-    if (!directShowManager.IsRegistered()) {
-        MessageBoxA(nullptr,
-            "⚠️ Virtual Camera Not Registered\n\n"
-            "Please register the DirectShow virtual camera first:\n\n"
-            "1. Right-click MySubstitute system tray icon\n"
-            "2. Select 'Register Virtual Camera'\n"
-            "3. Run as Administrator when prompted\n"
-            "4. Wait for registration to complete\n\n"
-            "After registration, you can start streaming video.",
-            "Registration Required", MB_OK | MB_ICONINFORMATION);
-        return;
-    }
-    
-    // Virtual camera is registered - start streaming would go here
-    if (g_trayManager) {
-        g_trayManager->UpdateTooltip(L"MySubstitute - DirectShow Virtual Camera Active");
-    }
-    
-    MessageBoxA(nullptr,
-        "🎥 Virtual Camera Started\n\n"
-        "✅ MySubstitute DirectShow virtual camera is now active\n"
-        "✅ Should appear in all video applications\n\n"
-        "📋 Test now:\n"
-        "• Open Windows Camera app\n"
-        "• Look for 'MySubstitute Virtual Camera'\n"
-        "• Test in Zoom, Teams, browsers\n\n"
-        "� Note: This streams processed video from your real camera.",
-        "Virtual Camera Active", MB_OK | MB_ICONINFORMATION);
-    
-    // No virtual camera available
-    MessageBoxA(nullptr,
-        "❌ No Virtual Camera Registered\n\n"
-        "Please register a virtual camera first:\n"
-        "1. Right-click MySubstitute system tray icon\n"
-        "2. Select 'Register Virtual Camera'\n"
-        "3. Run as Administrator if prompted\n\n"
-        "After registration, you can start the virtual camera.",
-        "Virtual Camera Required", MB_OK | MB_ICONINFORMATION);
-}
-
-void OnStopVirtualCamera() {
-    if (g_virtualCameraManager) {
-        std::cout << "[Main] Stopping virtual camera..." << std::endl;
-        
-        if (g_virtualCameraManager->StopVirtualCamera()) {
-            if (g_trayManager) {
-                g_trayManager->UpdateTooltip(L"MySubstitute - Virtual Camera Stopped");
-            }
-            
-            MessageBoxA(nullptr,
-                "⏹️ Virtual Camera Stopped\n\n"
-                "MySubstitute Virtual Camera is no longer streaming.\n"
-                "Applications will show 'camera not available' or switch to other cameras.",
-                "Virtual Camera Stopped", MB_OK | MB_ICONINFORMATION);
-        }
-    }
-}
+// Removed OnStartVirtualCamera() and OnStopVirtualCamera() - no longer needed with DirectShow implementation
 
 void OnExit() {
     g_running = false;

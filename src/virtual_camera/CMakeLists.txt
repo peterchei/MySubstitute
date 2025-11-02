@@ -6,7 +6,6 @@ set(VIRTUAL_CAMERA_SOURCES
     virtual_camera_directshow.cpp
     class_factory.cpp
     virtual_camera_manager.cpp
-    virtual_camera_loader.cpp
     camera_interceptor.cpp
     directshow_filter.cpp
     output_pin.cpp
@@ -17,7 +16,6 @@ set(VIRTUAL_CAMERA_HEADERS
     virtual_camera_directshow.h
     class_factory.h
     virtual_camera_manager.h
-    virtual_camera_loader.h
     camera_interceptor.h
     directshow_filter.h
     output_pin.h

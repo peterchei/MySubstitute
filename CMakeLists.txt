@@ -63,7 +63,6 @@ set(SOURCES
     src/virtual_camera/class_factory.cpp
     src/virtual_camera/virtual_camera_manager.cpp
     src/virtual_camera/camera_diagnostics.cpp
-    src/virtual_camera/simple_virtual_camera_new.cpp
     src/virtual_camera/simple_registry_virtual_camera.cpp
     src/virtual_camera/media_foundation_camera.cpp
     src/virtual_camera/directshow_virtual_camera_manager.cpp
