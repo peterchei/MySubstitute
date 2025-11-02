@@ -174,10 +174,11 @@ set_target_properties(MySubstituteVirtualCameraDLL PROPERTIES
     LINK_FLAGS "/DEF:${CMAKE_SOURCE_DIR}/src/virtual_camera/MySubstituteVirtualCamera.def"
 )
 
-# Copy DLL to main executable directory
+# Copy DLL to main executable directory with COM-safe handling
 add_custom_command(TARGET MySubstituteVirtualCameraDLL POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:MySubstituteVirtualCameraDLL>
-        $<TARGET_FILE_DIR:MySubstitute>/MySubstituteVirtualCamera.dll
-    COMMENT "Copying DirectShow DLL to application directory"
+    COMMAND powershell.exe -ExecutionPolicy Bypass -File 
+        "${CMAKE_SOURCE_DIR}/scripts/copy_dll_safe.ps1"
+        "$<TARGET_FILE:MySubstituteVirtualCameraDLL>"
+        "$<TARGET_FILE_DIR:MySubstitute>/MySubstituteVirtualCamera.dll"
+    COMMENT "Safely copying DirectShow DLL (handles COM registration)"
 )
