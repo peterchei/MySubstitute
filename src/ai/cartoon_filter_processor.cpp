@@ -113,8 +113,9 @@ void CartoonFilterProcessor::ApplySimpleCartoon(cv::Mat& frame)
         }
         cv::cvtColor(hsv, smoothed, cv::COLOR_HSV2BGR);
 
-        // More aggressive color quantization for cartoon look
-        cv::Mat quantized = QuantizeColors(smoothed, 6);  // Fewer colors = more cartoon
+        // Very aggressive fast quantization - 4 levels = 64 total colors (4^3)
+        // Much faster than k-means but still dramatic cartoon effect
+        cv::Mat quantized = QuantizeColors(smoothed, 4);
         
         // Smooth color transitions between frames
         if (!m_previousQuantized.empty() && quantized.size() == m_previousQuantized.size()) {
@@ -168,8 +169,9 @@ void CartoonFilterProcessor::ApplyDetailedCartoon(cv::Mat& frame)
         }
         cv::cvtColor(hsv, smoothed, cv::COLOR_HSV2BGR);
 
-        // Aggressive color reduction
-        cv::Mat quantized = QuantizeColors(smoothed, 5);  // Very few colors
+        // Very aggressive fast quantization - 3 levels = 27 total colors (3^3)
+        // Extreme cartoon effect for detailed style
+        cv::Mat quantized = QuantizeColors(smoothed, 3);
         
         // Smooth color transitions between frames
         if (!m_previousQuantized.empty() && quantized.size() == m_previousQuantized.size()) {
@@ -222,8 +224,8 @@ void CartoonFilterProcessor::ApplyAnimeStyle(cv::Mat& frame)
         }
         cv::cvtColor(hsv, smoothed, cv::COLOR_HSV2BGR);
 
-        // Extreme color reduction for anime palette
-        cv::Mat quantized = QuantizeColors(smoothed, 4);  // Very few colors for anime style
+        // Very aggressive fast quantization - 4 levels for anime = 64 colors (4^3)
+        cv::Mat quantized = QuantizeColors(smoothed, 4);
         
         // Smooth color transitions between frames
         if (!m_previousQuantized.empty() && quantized.size() == m_previousQuantized.size()) {
