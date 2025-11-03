@@ -90,9 +90,33 @@ void OnFilterChanged(const std::string& filterName) {
         // Switch to pixel art processor (Minecraft-style)
         g_processor = std::make_unique<PixelArtProcessor>();
         if (g_processor->Initialize()) {
-            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << std::endl;
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Minecraft style)" << std::endl;
         } else {
             std::cout << "[OnFilterChanged] Failed to initialize PixelArtProcessor, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "pixel_art_anime") {
+        // Switch to pixel art processor (Anime style)
+        auto processor = std::make_unique<PixelArtProcessor>();
+        processor->SetStyle(PixelArtProcessor::ANIME_PIXEL);
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Anime style)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize PixelArtProcessor (Anime), falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "pixel_art_retro") {
+        // Switch to pixel art processor (Retro 16-bit style)
+        auto processor = std::make_unique<PixelArtProcessor>();
+        processor->SetStyle(PixelArtProcessor::RETRO_16BIT);
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Retro 16-bit style)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize PixelArtProcessor (Retro), falling back to passthrough" << std::endl;
             g_processor = std::make_unique<PassthroughProcessor>();
             g_processor->Initialize();
         }

@@ -13,9 +13,11 @@ PixelArtProcessor::PixelArtProcessor()
       m_enableEdges(true),
       m_enableDithering(false),
       m_frameCounter(0),
-      m_processingTime(0.0)
+      m_processingTime(0.0),
+      m_bufferSize(3),  // Small buffer for stability
+      m_temporalBlendWeight(0.7)  // 70% current, 30% previous
 {
-    std::cout << "[PixelArtProcessor] Initializing" << std::endl;
+    std::cout << "[PixelArtProcessor] Initializing with temporal stabilization" << std::endl;
 }
 
 PixelArtProcessor::~PixelArtProcessor()
@@ -35,6 +37,10 @@ bool PixelArtProcessor::Initialize()
 void PixelArtProcessor::Cleanup()
 {
     std::cout << "[PixelArtProcessor] Cleanup called" << std::endl;
+#ifdef HAVE_OPENCV
+    m_frameBuffer.clear();
+    m_previousFrame.release();
+#endif
 }
 
 bool PixelArtProcessor::SetParameter(const std::string& name, const std::string& value)
@@ -153,6 +159,9 @@ void PixelArtProcessor::ApplyMinecraftStyle(cv::Mat& frame)
         cv::Mat edges = DetectEdges(frame);
         frame = ApplyEdgeOutlines(frame, edges);
     }
+    
+    // Step 5: Apply temporal stabilization to reduce blinking
+    frame = StabilizeFrame(frame);
 }
 
 void PixelArtProcessor::ApplyAnimePixelStyle(cv::Mat& frame)
@@ -173,6 +182,9 @@ void PixelArtProcessor::ApplyAnimePixelStyle(cv::Mat& frame)
         cv::Mat edges = DetectEdges(frame);
         frame = ApplyEdgeOutlines(frame, edges);
     }
+    
+    // Step 5: Apply temporal stabilization to reduce blinking
+    frame = StabilizeFrame(frame);
 }
 
 void PixelArtProcessor::ApplyRetro16BitStyle(cv::Mat& frame)
@@ -198,6 +210,9 @@ void PixelArtProcessor::ApplyRetro16BitStyle(cv::Mat& frame)
         edges.convertTo(softEdges, -1, 0.6, 0);
         frame = ApplyEdgeOutlines(frame, softEdges);
     }
+    
+    // Step 5: Apply temporal stabilization to reduce blinking
+    frame = StabilizeFrame(frame);
 }
 
 cv::Mat PixelArtProcessor::Pixelate(const cv::Mat& src, int pixelSize)
@@ -357,6 +372,32 @@ cv::Mat PixelArtProcessor::ApplyDithering(const cv::Mat& src)
     }
     
     return dithered;
+}
+
+cv::Mat PixelArtProcessor::StabilizeFrame(const cv::Mat& currentFrame)
+{
+    if (currentFrame.empty()) {
+        return currentFrame.clone();
+    }
+    
+    // First frame - no stabilization needed
+    if (m_previousFrame.empty() || 
+        m_previousFrame.size() != currentFrame.size() || 
+        m_previousFrame.type() != currentFrame.type()) {
+        m_previousFrame = currentFrame.clone();
+        return currentFrame.clone();
+    }
+    
+    // Blend current frame with previous frame for temporal stability
+    cv::Mat stabilized;
+    cv::addWeighted(currentFrame, m_temporalBlendWeight, 
+                    m_previousFrame, 1.0 - m_temporalBlendWeight, 
+                    0, stabilized);
+    
+    // Update previous frame for next iteration
+    m_previousFrame = stabilized.clone();
+    
+    return stabilized;
 }
 
 #endif // HAVE_OPENCV

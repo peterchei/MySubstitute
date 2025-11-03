@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ai_processor.h"
+#include <deque>
 
 #ifdef HAVE_OPENCV
 #include <opencv2/opencv.hpp>
@@ -75,6 +76,11 @@ private:
     void ApplyMinecraftStyle(cv::Mat& frame);
     void ApplyAnimePixelStyle(cv::Mat& frame);
     void ApplyRetro16BitStyle(cv::Mat& frame);
+    
+    // Temporal stabilization
+    cv::Mat StabilizeFrame(const cv::Mat& currentFrame);
+    std::deque<cv::Mat> m_frameBuffer;
+    cv::Mat m_previousFrame;
 #endif
 
     Style m_style;
@@ -84,4 +90,6 @@ private:
     bool m_enableDithering;
     int m_frameCounter;
     double m_processingTime;
+    int m_bufferSize;
+    double m_temporalBlendWeight;
 };
