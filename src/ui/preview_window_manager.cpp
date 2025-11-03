@@ -329,7 +329,11 @@ bool PreviewWindowManager::CreateControlPanel() {
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Pixel Art (Minecraft)");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Pixel Art (Anime)");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Pixel Art (Retro 16-bit)");
-    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Anime GAN (AI - GPU)");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Style: Candy");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Style: Mosaic");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Style: Starry Night");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Style: La Muse");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Style: Feathers");
     SendMessageW(m_filterComboBox, CB_SETCURSEL, 0, 0);
 
     // Create face filter controls
@@ -404,7 +408,11 @@ void PreviewWindowManager::OnFilterSelectionChanged() {
             case 7: filterName = "pixel_art"; break;
             case 8: filterName = "pixel_art_anime"; break;
             case 9: filterName = "pixel_art_retro"; break;
-            case 10: filterName = "anime_gan"; break;
+            case 10: filterName = "style_candy"; break;
+            case 11: filterName = "style_mosaic"; break;
+            case 12: filterName = "style_starry_night"; break;
+            case 13: filterName = "style_la_muse"; break;
+            case 14: filterName = "style_feathers"; break;
             default: filterName = "none"; break;
         }
         m_filterCallback(filterName);

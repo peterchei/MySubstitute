@@ -9,7 +9,7 @@
 #endif
 
 AnimeGANProcessor::AnimeGANProcessor()
-    : m_modelPath("models/anime_gan.onnx"),
+    : m_modelPath("models/candy.t7"),  // Changed to .t7 format
       m_inputWidth(512),
       m_inputHeight(512),
       m_blendWeight(0.85f),
@@ -19,7 +19,7 @@ AnimeGANProcessor::AnimeGANProcessor()
       m_processingTime(0.0),
       m_frameCounter(0)
 {
-    std::cout << "[AnimeGANProcessor] Initializing..." << std::endl;
+    std::cout << "[AnimeGANProcessor] Initializing with Fast Neural Style..." << std::endl;
 }
 
 AnimeGANProcessor::~AnimeGANProcessor()
@@ -35,10 +35,9 @@ bool AnimeGANProcessor::Initialize()
     // Check if model file exists
     if (!std::filesystem::exists(m_modelPath)) {
         std::cerr << "[AnimeGANProcessor] ERROR: Model file not found: " << m_modelPath << std::endl;
-        std::cerr << "[AnimeGANProcessor] Please download AnimeGAN ONNX model and place it at: " << m_modelPath << std::endl;
-        std::cerr << "[AnimeGANProcessor] Suggested models:" << std::endl;
-        std::cerr << "[AnimeGANProcessor]   - AnimeGANv2: https://github.com/bryandlee/animegan2-pytorch" << std::endl;
-        std::cerr << "[AnimeGANProcessor]   - AnimeGANv3: https://github.com/TachibanaYoshino/AnimeGANv3" << std::endl;
+        std::cerr << "[AnimeGANProcessor] Please download Fast Neural Style .t7 model and place it in models/ folder" << std::endl;
+        std::cerr << "[AnimeGANProcessor] Available models: candy.t7, mosaic.t7, starry_night.t7, etc." << std::endl;
+        std::cerr << "[AnimeGANProcessor] Download from: https://cs.stanford.edu/people/jcjohns/fast-neural-style/" << std::endl;
         return false;
     }
     
@@ -46,9 +45,9 @@ bool AnimeGANProcessor::Initialize()
     m_gpuAvailable = DetectGPUSupport();
     
     try {
-        // Load the ONNX model
-        std::cout << "[AnimeGANProcessor] Loading model from: " << m_modelPath << std::endl;
-        m_net = cv::dnn::readNetFromONNX(m_modelPath);
+        // Load the Torch model (.t7 format)
+        std::cout << "[AnimeGANProcessor] Loading Fast Neural Style model from: " << m_modelPath << std::endl;
+        m_net = cv::dnn::readNetFromTorch(m_modelPath);  // Changed from readNetFromONNX
         
         if (m_net.empty()) {
             std::cerr << "[AnimeGANProcessor] ERROR: Failed to load model" << std::endl;
@@ -61,14 +60,13 @@ bool AnimeGANProcessor::Initialize()
             m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
             m_net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
         } else {
-            std::cout << "[AnimeGANProcessor] WARNING: GPU not available, using CPU backend" << std::endl;
-            std::cout << "[AnimeGANProcessor] Performance will be significantly slower (~10-20x)" << std::endl;
+            std::cout << "[AnimeGANProcessor] Using CPU backend" << std::endl;
             m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
             m_net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
         }
         
         m_modelLoaded = true;
-        std::cout << "[AnimeGANProcessor] Model loaded successfully" << std::endl;
+        std::cout << "[AnimeGANProcessor] Fast Neural Style model loaded successfully" << std::endl;
         std::cout << "[AnimeGANProcessor] Input size: " << m_inputWidth << "x" << m_inputHeight << std::endl;
         std::cout << "[AnimeGANProcessor] Blend weight: " << m_blendWeight << std::endl;
         std::cout << "[AnimeGANProcessor] Temporal blend: " << m_temporalBlendWeight << std::endl;

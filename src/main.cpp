@@ -147,14 +147,75 @@ void OnFilterChanged(const std::string& filterName) {
             g_processor = std::make_unique<PassthroughProcessor>();
             g_processor->Initialize();
         }
-    } else if (filterName == "anime_gan") {
-        // Switch to AnimeGAN processor (AI-based, requires GPU)
-        g_processor = std::make_unique<AnimeGANProcessor>();
+    } else if (filterName == "style_candy") {
+        // Switch to Candy style processor
+        auto processor = std::make_unique<AnimeGANProcessor>();
+        processor->SetModelPath("models/candy.t7");
+        g_processor = std::move(processor);
         if (g_processor->Initialize()) {
-            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (AI Anime)" << std::endl;
+            std::cout << "[OnFilterChanged] Switched to: Candy Style (AI)" << std::endl;
         } else {
-            std::cout << "[OnFilterChanged] Failed to initialize AnimeGANProcessor, falling back to passthrough" << std::endl;
-            std::cout << "[OnFilterChanged] Make sure anime_gan.onnx model is in models/ directory" << std::endl;
+            std::cout << "[OnFilterChanged] Failed to initialize Candy style, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "style_mosaic") {
+        // Switch to Mosaic style processor
+        auto processor = std::make_unique<AnimeGANProcessor>();
+        processor->SetModelPath("models/mosaic.t7");
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: Mosaic Style (AI)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize Mosaic style, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "style_starry_night") {
+        // Switch to Starry Night style processor
+        auto processor = std::make_unique<AnimeGANProcessor>();
+        processor->SetModelPath("models/starry_night.t7");
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: Starry Night Style (AI)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize Starry Night style, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "style_la_muse") {
+        // Switch to La Muse style processor
+        auto processor = std::make_unique<AnimeGANProcessor>();
+        processor->SetModelPath("models/la_muse.t7");
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: La Muse Style (AI)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize La Muse style, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "style_feathers") {
+        // Switch to Feathers style processor
+        auto processor = std::make_unique<AnimeGANProcessor>();
+        processor->SetModelPath("models/feathers.t7");
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: Feathers Style (AI)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize Feathers style, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "anime_gan") {
+        // Legacy handler - defaults to candy style
+        auto processor = std::make_unique<AnimeGANProcessor>();
+        processor->SetModelPath("models/candy.t7");
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: AI Style (Candy)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize AI style, falling back to passthrough" << std::endl;
             g_processor = std::make_unique<PassthroughProcessor>();
             g_processor->Initialize();
         }
