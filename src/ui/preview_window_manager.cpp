@@ -329,6 +329,7 @@ bool PreviewWindowManager::CreateControlPanel() {
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Pixel Art (Minecraft)");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Pixel Art (Anime)");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Pixel Art (Retro 16-bit)");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Anime GAN (AI - GPU)");
     SendMessageW(m_filterComboBox, CB_SETCURSEL, 0, 0);
 
     // Create face filter controls
@@ -403,6 +404,7 @@ void PreviewWindowManager::OnFilterSelectionChanged() {
             case 7: filterName = "pixel_art"; break;
             case 8: filterName = "pixel_art_anime"; break;
             case 9: filterName = "pixel_art_retro"; break;
+            case 10: filterName = "anime_gan"; break;
             default: filterName = "none"; break;
         }
         m_filterCallback(filterName);

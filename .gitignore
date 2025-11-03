@@ -1,2 +1,3 @@
 build/** 
 troubleshoot/*.exe
+models/anime_gan.onnx
