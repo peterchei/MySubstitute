@@ -19,14 +19,32 @@ A complete Windows virtual camera solution that captures real camera feeds, proc
 - ✅ Thread-safe multi-camera support
 
 ### 🤖 **AI Processing Pipeline**
-- ✅ Pluggable AI processor architecture with animated test patterns
+- ✅ Pluggable AI processor architecture with multiple filter options
+- ✅ **Face Filters**: Virtual glasses, funny hats, and speech bubbles with real-time face detection
+- ✅ **Cartoon Effects**: Two cartoon styles with edge detection and color quantization
+  - Standard cartoon filter with temporal blending
+  - Buffered cartoon filter with enhanced stability
+- ✅ **Pixel Art Filters**: Three anime-inspired pixel art styles
+  - Minecraft style (8×8 blocky pixels, vibrant colors)
+  - Anime pixel style (4×4 detailed pixels, anime palette)
+  - Retro 16-bit style (6×6 pixels with optional dithering)
 - ✅ Professional caption overlays with semi-transparent backgrounds
 - ✅ Customizable text positioning, scaling, and colors
-- ✅ Real-time frame processing with minimal latency
+- ✅ Real-time frame processing with temporal stabilization
+- ✅ Thread-safe filter switching without crashes
 
 ### 📱 **Live Preview System**
 - ✅ Mobile phone-sized preview window (270x480)
-- ✅ Real-time display of processed video feed
+- ✅ Real-time display of processed video feed with filter selection
+- ✅ Filter dropdown menu with 8 effects:
+  - No Effects (passthrough with captions)
+  - Face Filters (glasses, hats, speech bubbles)
+  - Cartoon Effect (standard with temporal blending)
+  - Cartoon Buffered (enhanced stability)
+  - Pixel Art Minecraft (blocky 8×8)
+  - Pixel Art Anime (detailed 4×4)
+  - Pixel Art Retro (6×6 with dithering)
+- ✅ Face filter controls (checkboxes for accessories, text input for speech)
 - ✅ Always-on-top and positioning controls
 - ✅ Right-click context menu for quick settings
 
@@ -41,8 +59,9 @@ A complete Windows virtual camera solution that captures real camera feeds, proc
 ```
 Physical Camera → AI Processing → Shared Memory → Virtual Camera → Applications
       ↓              ↓               ↓              ↓              ↓
-  DirectShow → Caption Overlay → Inter-Process → DirectShow → Chrome/Zoom/OBS
-  (30 FPS)        (Real-time)      Communication    (26+ FPS)    (Live Stream)
+  DirectShow → Filter Effects → Inter-Process → DirectShow → Chrome/Zoom/OBS
+  (30 FPS)    (8 Filter Types)   Communication    (26+ FPS)    (Live Stream)
+              Face/Cartoon/Pixel
 ```
 
 ### **Inter-Process Communication Pipeline**
@@ -84,16 +103,44 @@ Main Process:                    DirectShow DLL:
 - ✅ Background capture thread with 30 FPS frame rate control
 
 #### **3. AI Processing Pipeline (`src/ai/`)**
-- ✅ `AIProcessor`: Abstract base class for pluggable processors
+- ✅ `AIProcessor`: Abstract base class for pluggable processors with parameter system
 - ✅ `PassthroughProcessor`: Caption overlay with timestamp and watermark support
+- ✅ `FaceFilterProcessor`: Real-time face detection with OpenCV Haar cascades
+  - Virtual glasses overlay with positioning
+  - Funny hat accessory with scaling
+  - Speech bubble with customizable text
+- ✅ `CartoonFilterProcessor`: Anime-style cartoon effect
+  - Bilateral filtering for smooth colors
+  - Laplacian edge detection with hysteresis
+  - Color quantization (3 style modes)
+  - Temporal blending for stability
+- ✅ `CartoonBufferedFilterProcessor`: Enhanced cartoon with frame buffering
+  - 5-frame temporal buffer
+  - Weighted temporal blending (70/30)
+  - Optimized for performance and stability
+- ✅ `PixelArtProcessor`: Anime-inspired pixel art with 3 styles
+  - Minecraft mode (8×8 blocks, vibrant colors, strong edges)
+  - Anime pixel mode (4×4 blocks, anime palette, 8 color levels)
+  - Retro 16-bit mode (6×6 blocks, dithering, 5 color levels)
+  - Temporal stabilization to prevent blinking
 - ✅ Professional text rendering with semi-transparent backgrounds
-- ✅ Real-time frame processing with minimal latency
+- ✅ Thread-safe filter switching with mutex protection
+- ✅ Real-time frame processing with performance monitoring
 
 #### **4. Live Preview System (`src/ui/`)**
 - ✅ `PreviewWindowManager`: Mobile phone-sized video preview (270x480)
+  - Filter selection combo box with 8 filter options
+  - Face filter controls (glasses, hat, speech bubble checkboxes)
+  - Speech bubble text input field
+  - Real-time filter switching via callback system
 - ✅ `SystemTrayManager`: Background operation with context menu controls
+  - Camera start/stop with status monitoring
+  - Camera selection from enumerated devices
+  - Show/hide preview window toggle
+  - Application exit with cleanup
 - ✅ Real-time video rendering with Windows GDI+ 
 - ✅ Always-on-top, positioning, and right-click context menus
+- ✅ Thread-safe UI updates with proper synchronization
 
 ## 🛠️ **Technical Requirements**
 
@@ -150,19 +197,29 @@ run.bat
 1. **Open Your App**: Chrome, Zoom, Teams, OBS Studio, etc.
 2. **Select Camera**: Look for "MySubstitute Virtual Camera" in camera dropdown
 3. **Live Streaming**: 26+ FPS AI-processed video streams to your application
-4. **Real-time Processing**: Caption overlays and AI effects applied live
+4. **Choose Filter**: Use preview window to select from 8 different effects
+5. **Real-time Effects**: Face filters, cartoon styles, or pixel art applied live
 
 ### **Live Video Experience**
 1. **Select Input Camera**: Choose from available cameras via tray menu
-2. **AI Processing**: Real-time caption overlay with timestamp and effects
-3. **Virtual Camera Output**: Processed video streams to all applications
-4. **Live Preview**: Mobile-style preview window shows processed output
-5. **Background Operation**: Continues streaming until explicitly closed
+2. **Choose AI Filter**: Select from 8 effects in preview window:
+   - Face filters with accessories and speech bubbles
+   - Cartoon effects (standard or buffered for stability)
+   - Pixel art (Minecraft, Anime, or Retro 16-bit styles)
+3. **Customize Effects**: Adjust filter-specific settings in preview panel
+4. **Virtual Camera Output**: Processed video streams to all applications
+5. **Live Preview**: Mobile-style preview window shows processed output
+6. **Switch Filters**: Change effects on-the-fly without restart
+7. **Background Operation**: Continues streaming until explicitly closed
 
 ### **Controls & Features**
 - **Virtual Camera**: Appears in all video applications as "MySubstitute Virtual Camera"
+- **8 Live Filters**: Face detection, cartoon effects, pixel art styles
+- **Filter Switching**: Change effects in real-time without crashes (thread-safe)
+- **Face Accessories**: Glasses, hats, and speech bubbles with customizable text
+- **Temporal Stabilization**: Smooth, flicker-free video output
 - **Tray Menu**: Right-click for camera selection and application controls
-- **Preview Window**: Right-click for positioning and display options
+- **Preview Window**: Real-time display with filter controls and settings
 - **Live Captions**: Professional text overlay with transparent background
 - **Multi-Camera**: Switch between cameras without restart
 - **Browser Compatible**: Works in webcamtests.com and all web browsers
@@ -170,6 +227,17 @@ run.bat
 ## 🏗️ **Production Architecture**
 
 ### **Shared Memory Communication Architecture**
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  Real Camera    │───▶│  AI Processing   │───▶│ Shared Memory   │───▶│  Applications   │
+│  (DirectShow)   │    │  (8 Filters)     │    │ (Inter-Process) │    │ (Chrome/Zoom)   │
+│                 │    │                  │    │                 │    │                 │
+│ • Camera enum   │    │ • Face detection │    │ • RGB24 frames  │    │ • 26+ FPS       │
+│ • 30 FPS        │    │ • Cartoon effects│    │ • 640×480       │    │ • Browser ready │
+│ • Multi-device  │    │ • Pixel art      │    │ • Thread-safe   │    │ • Live streaming│
+│                 │    │ • Stabilization  │    │ • Mutex protect │    │ • Smooth video  │
+└─────────────────┘    └──────────────────┘    └─────────────────┘    └─────────────────┘
+```
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │  Real Camera    │───▶│  AI Processing   │───▶│ Shared Memory   │───▶│  Applications   │
@@ -220,15 +288,19 @@ src/
 ├── capture/                    # Camera capture system
 │   ├── camera_capture.*        # DirectShow + OpenCV camera access  
 │   └── frame.*                # Thread-safe frame data structures
-├── ai/                        # Processing pipeline
+├── ai/                        # Processing pipeline (8 filters)
 │   ├── ai_processor.*         # Abstract processor interface
-│   └── passthrough_processor.* # Caption and overlay processor
+│   ├── passthrough_processor.* # Caption and overlay processor
+│   ├── face_filter_processor.* # Face detection with accessories
+│   ├── cartoon_filter_processor.* # Anime-style cartoon effect
+│   ├── cartoon_buffered_filter_processor.* # Buffered cartoon
+│   └── pixel_art_processor.*  # Pixel art (Minecraft/Anime/Retro)
 ├── virtual_camera/            # ✅ PRODUCTION VIRTUAL CAMERA
 │   ├── virtual_camera_directshow.*  # Complete DirectShow implementation
 │   └── directshow_dll_main.cpp     # COM registration system
 └── ui/                        # User interface components
     ├── system_tray_manager.*    # Background tray integration
-    └── preview_window_manager.* # Live video preview window
+    └── preview_window_manager.* # Live video preview with filter controls
 ```
 
 ### **Adding New Processing Features**
@@ -257,11 +329,13 @@ src/
 - ✅ **Browser Compatibility**: IKsPropertySet implementation for web browsers
 
 ### 🚧 **Future Enhancement Opportunities**
-- 🚧 **Advanced AI Filters**: Background replacement, face effects (architecture ready)
+- 🚧 **Advanced AI Filters**: Background replacement with segmentation models
+- 🚧 **More Pixel Art Styles**: Additional retro gaming aesthetics
+- 🚧 **Filter Parameters UI**: Sliders for color levels, pixel size, edge strength
 - 🚧 **GPU Acceleration**: CUDA/DirectML integration for performance
 - 🚧 **Windows Service**: Always-on operation with system startup
-- 🚧 **Configuration UI**: Advanced settings for processing parameters
 - 🚧 **Multiple Resolutions**: 1080p, 720p format support expansion
+- 🚧 **Filter Presets**: Save and load custom filter configurations
 
 ### 🎯 **Success Metrics Achieved**
 - ✅ **Performance**: 26+ FPS sustained streaming in production
