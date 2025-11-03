@@ -115,11 +115,11 @@ void CartoonFilterProcessor::ApplySimpleCartoon(cv::Mat& frame)
 
         // Very aggressive fast quantization - 4 levels = 64 total colors (4^3)
         // Much faster than k-means but still dramatic cartoon effect
-        cv::Mat quantized = QuantizeColors(smoothed, 4);
+        cv::Mat quantized = QuantizeColors(smoothed, 6);  // Increased to 6 for smoother look
         
-        // Smooth color transitions between frames
+        // Smooth color transitions between frames - stronger temporal filtering
         if (!m_previousQuantized.empty() && quantized.size() == m_previousQuantized.size()) {
-            cv::addWeighted(quantized, 0.6, m_previousQuantized, 0.4, 0, quantized);
+            cv::addWeighted(quantized, 0.5, m_previousQuantized, 0.5, 0, quantized);  // 50-50 blend for stability
         }
         quantized.copyTo(m_previousQuantized);
 
@@ -171,11 +171,11 @@ void CartoonFilterProcessor::ApplyDetailedCartoon(cv::Mat& frame)
 
         // Very aggressive fast quantization - 3 levels = 27 total colors (3^3)
         // Extreme cartoon effect for detailed style
-        cv::Mat quantized = QuantizeColors(smoothed, 3);
+        cv::Mat quantized = QuantizeColors(smoothed, 5);  // Increased to 5 for better stability
         
-        // Smooth color transitions between frames
+        // Smooth color transitions between frames - stronger temporal filtering
         if (!m_previousQuantized.empty() && quantized.size() == m_previousQuantized.size()) {
-            cv::addWeighted(quantized, 0.6, m_previousQuantized, 0.4, 0, quantized);
+            cv::addWeighted(quantized, 0.5, m_previousQuantized, 0.5, 0, quantized);  // 50-50 blend for stability
         }
         quantized.copyTo(m_previousQuantized);
 
@@ -225,11 +225,11 @@ void CartoonFilterProcessor::ApplyAnimeStyle(cv::Mat& frame)
         cv::cvtColor(hsv, smoothed, cv::COLOR_HSV2BGR);
 
         // Very aggressive fast quantization - 4 levels for anime = 64 colors (4^3)
-        cv::Mat quantized = QuantizeColors(smoothed, 4);
+        cv::Mat quantized = QuantizeColors(smoothed, 6);  // Increased to 6 for smoother look
         
-        // Smooth color transitions between frames
+        // Smooth color transitions between frames - stronger temporal filtering
         if (!m_previousQuantized.empty() && quantized.size() == m_previousQuantized.size()) {
-            cv::addWeighted(quantized, 0.6, m_previousQuantized, 0.4, 0, quantized);
+            cv::addWeighted(quantized, 0.5, m_previousQuantized, 0.5, 0, quantized);  // 50-50 blend for stability
         }
         quantized.copyTo(m_previousQuantized);
 
@@ -277,18 +277,18 @@ cv::Mat CartoonFilterProcessor::StabilizeEdges(const cv::Mat& currentEdges)
             uint8_t currVal = currRow[x];
             uint8_t prevVal = prevRow[x];
             
-            // Strong hysteresis: keep edges if:
-            // 1. Strong edge in current frame (< 100), OR
-            // 2. Edge in previous frame AND reasonable edge in current (< 150)
-            if (currVal < 100) {
+            // Stronger hysteresis for more persistence:
+            // 1. Strong edge in current frame (< 120), OR
+            // 2. Edge in previous frame AND reasonable edge in current (< 180)
+            if (currVal < 120) {
                 // Strong current edge - always keep
                 stabRow[x] = currVal;
-            } else if (currVal < 150 && prevVal < 200) {
-                // Moderate current edge and previous edge present
-                stabRow[x] = cv::saturate_cast<uint8_t>((currVal + prevVal) / 2);
-            } else if (prevVal < 150) {
-                // Weak current but strong previous edge - propagate it
-                stabRow[x] = cv::saturate_cast<uint8_t>(prevVal * 0.9f);
+            } else if (currVal < 180 && prevVal < 220) {
+                // Moderate current edge and previous edge present - blend heavily with previous
+                stabRow[x] = cv::saturate_cast<uint8_t>((currVal * 0.3f) + (prevVal * 0.7f));
+            } else if (prevVal < 180) {
+                // Weak current but strong previous edge - propagate it with strong decay
+                stabRow[x] = cv::saturate_cast<uint8_t>(prevVal * 0.85f);
             } else {
                 // No significant edge
                 stabRow[x] = 255;
@@ -328,9 +328,8 @@ cv::Mat CartoonFilterProcessor::DetectEdges(const cv::Mat& src)
     cv::Laplacian(blurred, laplacian, CV_16S, 1);
     cv::convertScaleAbs(laplacian, laplacian);
 
-    // Use very low threshold for more responsive edges
-    // Lower values = more edge detection, but more noise
-    int threshold = std::max(5, m_edgeThreshold / 8);  // Even lower threshold
+    // Use moderate threshold for stable edges - higher threshold = fewer but more stable edges
+    int threshold = std::max(15, m_edgeThreshold / 6);  // Increased from /8 to /6 for stability
     cv::threshold(laplacian, edges, threshold, 255, cv::THRESH_BINARY);
 
     // Invert: we want white areas where edges are (for masking)
