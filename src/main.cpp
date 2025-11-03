@@ -11,6 +11,7 @@
 #include "ai/face_filter_processor.h"
 #include "ai/cartoon_filter_processor.h"
 #include "ai/cartoon_buffered_filter_processor.h"
+#include "ai/pixel_art_processor.h"
 #include "virtual_camera/virtual_camera_filter.h"
 #include "virtual_camera/virtual_camera_manager.h"
 #include "virtual_camera/camera_diagnostics.h"
@@ -82,6 +83,16 @@ void OnFilterChanged(const std::string& filterName) {
             std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << std::endl;
         } else {
             std::cout << "[OnFilterChanged] Failed to initialize CartoonBufferedFilterProcessor, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "pixel_art") {
+        // Switch to pixel art processor (Minecraft-style)
+        g_processor = std::make_unique<PixelArtProcessor>();
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize PixelArtProcessor, falling back to passthrough" << std::endl;
             g_processor = std::make_unique<PassthroughProcessor>();
             g_processor->Initialize();
         }

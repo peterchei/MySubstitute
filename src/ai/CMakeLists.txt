@@ -7,6 +7,7 @@ set(AI_SOURCES
     face_filter_processor.cpp
     cartoon_filter_processor.cpp
     cartoon_buffered_filter_processor.cpp
+    pixel_art_processor.cpp
 )
 
 set(AI_HEADERS
@@ -15,6 +16,7 @@ set(AI_HEADERS
     face_filter_processor.h
     cartoon_filter_processor.h
     cartoon_buffered_filter_processor.h
+    pixel_art_processor.h
 )
 
 add_library(AIProcessor STATIC
