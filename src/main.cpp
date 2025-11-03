@@ -10,6 +10,7 @@
 #include "ai/passthrough_processor.h"
 #include "ai/face_filter_processor.h"
 #include "ai/cartoon_filter_processor.h"
+#include "ai/cartoon_buffered_filter_processor.h"
 #include "virtual_camera/virtual_camera_filter.h"
 #include "virtual_camera/virtual_camera_manager.h"
 #include "virtual_camera/camera_diagnostics.h"
@@ -24,6 +25,7 @@
 std::unique_ptr<SystemTrayManager> g_trayManager;
 std::unique_ptr<CameraCapture> g_camera;
 std::unique_ptr<AIProcessor> g_processor;
+std::mutex g_processorMutex;  // Protect processor access during filter switches
 std::unique_ptr<VirtualCameraFilter> g_virtualCamera;
 std::unique_ptr<VirtualCameraManager> g_virtualCameraManager;
 std::unique_ptr<PreviewWindowManager> g_previewManager;
@@ -31,6 +33,9 @@ std::unique_ptr<PreviewWindowManager> g_previewManager;
 // Filter change callback
 void OnFilterChanged(const std::string& filterName) {
     std::cout << "[OnFilterChanged] Filter changed to: '" << filterName << "'" << std::endl;
+
+    // Lock processor mutex to prevent race condition during filter switch
+    std::lock_guard<std::mutex> lock(g_processorMutex);
 
     if (!g_processor) {
         std::cout << "[OnFilterChanged] No processor available" << std::endl;
@@ -67,6 +72,16 @@ void OnFilterChanged(const std::string& filterName) {
             std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << std::endl;
         } else {
             std::cout << "[OnFilterChanged] Failed to initialize CartoonFilterProcessor, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "cartoon_buffered") {
+        // Switch to buffered cartoon filter processor
+        g_processor = std::make_unique<CartoonBufferedFilterProcessor>();
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize CartoonBufferedFilterProcessor, falling back to passthrough" << std::endl;
             g_processor = std::make_unique<PassthroughProcessor>();
             g_processor->Initialize();
         }
@@ -610,31 +625,34 @@ Frame GetLatestProcessedFrame() {
     }
     
     // Fallback to test frame if no camera data available
-    if (g_processor) {
+    {
+        std::lock_guard<std::mutex> processorLock(g_processorMutex);
+        if (g_processor) {
 #if HAVE_OPENCV
-        // Create a test frame indicating no camera
-        cv::Mat testMat = cv::Mat::zeros(480, 640, CV_8UC3);
-        testMat.setTo(cv::Scalar(64, 32, 128));  // Purple-ish background
-        
-        // Add some visual elements
-        cv::circle(testMat, cv::Point(320, 240), 80, cv::Scalar(255, 255, 255), 2);
-        cv::putText(testMat, "No Camera Active", cv::Point(200, 230), 
-                   cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(255, 255, 255), 2);
-        cv::putText(testMat, "Start camera from tray menu", cv::Point(150, 260), 
-                   cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(200, 200, 200), 1);
-        
-        // Create Frame from Mat
-        Frame testFrame(testMat);
-        testFrame.timestamp = GetTickCount64();
-        
-        // Process the frame through the processor to add caption
-        return g_processor->ProcessFrame(testFrame);
+            // Create a test frame indicating no camera
+            cv::Mat testMat = cv::Mat::zeros(480, 640, CV_8UC3);
+            testMat.setTo(cv::Scalar(64, 32, 128));  // Purple-ish background
+            
+            // Add some visual elements
+            cv::circle(testMat, cv::Point(320, 240), 80, cv::Scalar(255, 255, 255), 2);
+            cv::putText(testMat, "No Camera Active", cv::Point(200, 230), 
+                       cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(255, 255, 255), 2);
+            cv::putText(testMat, "Start camera from tray menu", cv::Point(150, 260), 
+                       cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(200, 200, 200), 1);
+            
+            // Create Frame from Mat
+            Frame testFrame(testMat);
+            testFrame.timestamp = GetTickCount64();
+            
+            // Process the frame through the processor to add caption
+            return g_processor->ProcessFrame(testFrame);
 #else
-        // Create a basic test frame if OpenCV not available
-        Frame testFrame(640, 480, 3);
-        testFrame.timestamp = GetTickCount64();
-        return testFrame;
+            // Create a basic test frame if OpenCV not available
+            Frame testFrame(640, 480, 3);
+            testFrame.timestamp = GetTickCount64();
+            return testFrame;
 #endif
+        }
     }
     
     // Return empty frame if no processor available
@@ -642,6 +660,9 @@ Frame GetLatestProcessedFrame() {
 }
 
 void OnCameraFrame(const Frame& frame) {
+    // Lock processor mutex to prevent race condition during filter switch
+    std::lock_guard<std::mutex> processorLock(g_processorMutex);
+    
     if (!g_processor) {
         return;
     }

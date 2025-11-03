@@ -323,6 +323,7 @@ bool PreviewWindowManager::CreateControlPanel() {
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Face Filters");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Virtual Background");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Cartoon Effect");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Cartoon Buffered");
     SendMessageW(m_filterComboBox, CB_SETCURSEL, 0, 0);
 
     // Create face filter controls
@@ -391,6 +392,7 @@ void PreviewWindowManager::OnFilterSelectionChanged() {
             case 1: filterName = "face_filter"; break;
             case 2: filterName = "virtual_background"; break;
             case 3: filterName = "cartoon"; break;
+            case 4: filterName = "cartoon_buffered"; break;
             default: filterName = "none"; break;
         }
         m_filterCallback(filterName);
