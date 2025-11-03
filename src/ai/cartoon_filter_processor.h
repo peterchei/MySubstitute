@@ -30,12 +30,13 @@ public:
     void SetSmoothingLevel(int level);
     void SetColorLevels(int levels);
 
-private:
     enum CartoonStyle {
         SIMPLE = 0,
         DETAILED = 1,
         ANIME = 2
     };
+
+private:
 
 #ifdef HAVE_OPENCV
     // Core cartoon processing

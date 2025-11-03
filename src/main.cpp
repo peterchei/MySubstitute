@@ -66,13 +66,39 @@ void OnFilterChanged(const std::string& filterName) {
         g_processor = std::make_unique<PassthroughProcessor>();
         g_processor->Initialize();
         std::cout << "[OnFilterChanged] Virtual background not implemented, using passthrough" << std::endl;
-    } else if (filterName == "cartoon") {
-        // Switch to cartoon filter processor
-        g_processor = std::make_unique<CartoonFilterProcessor>();
+    } else if (filterName == "cartoon_simple") {
+        // Switch to cartoon filter processor (Simple style)
+        auto processor = std::make_unique<CartoonFilterProcessor>();
+        processor->SetCartoonStyle(CartoonFilterProcessor::SIMPLE);
+        g_processor = std::move(processor);
         if (g_processor->Initialize()) {
-            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << std::endl;
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Simple style)" << std::endl;
         } else {
-            std::cout << "[OnFilterChanged] Failed to initialize CartoonFilterProcessor, falling back to passthrough" << std::endl;
+            std::cout << "[OnFilterChanged] Failed to initialize CartoonFilterProcessor (Simple), falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "cartoon_detailed") {
+        // Switch to cartoon filter processor (Detailed style)
+        auto processor = std::make_unique<CartoonFilterProcessor>();
+        processor->SetCartoonStyle(CartoonFilterProcessor::DETAILED);
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Detailed style)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize CartoonFilterProcessor (Detailed), falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "cartoon_anime") {
+        // Switch to cartoon filter processor (Anime style)
+        auto processor = std::make_unique<CartoonFilterProcessor>();
+        processor->SetCartoonStyle(CartoonFilterProcessor::ANIME);
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Anime style)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize CartoonFilterProcessor (Anime), falling back to passthrough" << std::endl;
             g_processor = std::make_unique<PassthroughProcessor>();
             g_processor->Initialize();
         }

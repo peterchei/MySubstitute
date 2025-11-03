@@ -322,7 +322,9 @@ bool PreviewWindowManager::CreateControlPanel() {
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"No Effects");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Face Filters");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Virtual Background");
-    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Cartoon Effect");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Cartoon (Simple)");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Cartoon (Detailed)");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Cartoon (Anime)");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Cartoon Buffered");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Pixel Art (Minecraft)");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Pixel Art (Anime)");
@@ -394,11 +396,13 @@ void PreviewWindowManager::OnFilterSelectionChanged() {
             case 0: filterName = "none"; break;
             case 1: filterName = "face_filter"; break;
             case 2: filterName = "virtual_background"; break;
-            case 3: filterName = "cartoon"; break;
-            case 4: filterName = "cartoon_buffered"; break;
-            case 5: filterName = "pixel_art"; break;
-            case 6: filterName = "pixel_art_anime"; break;
-            case 7: filterName = "pixel_art_retro"; break;
+            case 3: filterName = "cartoon_simple"; break;
+            case 4: filterName = "cartoon_detailed"; break;
+            case 5: filterName = "cartoon_anime"; break;
+            case 6: filterName = "cartoon_buffered"; break;
+            case 7: filterName = "pixel_art"; break;
+            case 8: filterName = "pixel_art_anime"; break;
+            case 9: filterName = "pixel_art_retro"; break;
             default: filterName = "none"; break;
         }
         m_filterCallback(filterName);
