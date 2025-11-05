@@ -14,6 +14,7 @@
 #include "ai/pixel_art_processor.h"
 #include "ai/anime_gan_processor.h"
 #include "ai/person_tracker_processor.h"
+#include "ai/virtual_background_processor.h"
 #include "virtual_camera/virtual_camera_filter.h"
 #include "virtual_camera/virtual_camera_manager.h"
 #include "virtual_camera/camera_diagnostics.h"
@@ -63,11 +64,60 @@ void OnFilterChanged(const std::string& filterName) {
             g_processor = std::make_unique<PassthroughProcessor>();
             g_processor->Initialize();
         }
-    } else if (filterName == "virtual_background") {
-        // TODO: Implement virtual background processor
-        g_processor = std::make_unique<PassthroughProcessor>();
-        g_processor->Initialize();
-        std::cout << "[OnFilterChanged] Virtual background not implemented, using passthrough" << std::endl;
+    } else if (filterName == "virtual_background_blur") {
+        // Switch to virtual background processor (Blur mode)
+        auto processor = std::make_unique<VirtualBackgroundProcessor>();
+        processor->SetBackgroundMode(VirtualBackgroundProcessor::BLUR);
+        processor->SetBlurStrength(21);  // Default blur strength
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Blur mode)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize VirtualBackgroundProcessor, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "virtual_background_solid") {
+        // Switch to virtual background processor (Solid Color mode)
+        auto processor = std::make_unique<VirtualBackgroundProcessor>();
+        processor->SetBackgroundMode(VirtualBackgroundProcessor::SOLID_COLOR);
+#ifdef HAVE_OPENCV
+        processor->SetSolidColor(cv::Scalar(0, 150, 0));  // Green screen color
+#endif
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Solid Color mode)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize VirtualBackgroundProcessor, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "virtual_background_image") {
+        // Switch to virtual background processor (Custom Image mode)
+        auto processor = std::make_unique<VirtualBackgroundProcessor>();
+        processor->SetBackgroundMode(VirtualBackgroundProcessor::CUSTOM_IMAGE);
+        // Try to load a background image (you can make this configurable later)
+        processor->SetBackgroundImage("assets/background.jpg");
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Custom Image mode)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize VirtualBackgroundProcessor, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "virtual_background_desktop") {
+        // Switch to virtual background processor (Desktop Capture mode)
+        auto processor = std::make_unique<VirtualBackgroundProcessor>();
+        processor->SetBackgroundMode(VirtualBackgroundProcessor::DESKTOP_CAPTURE);
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Desktop Capture mode)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize VirtualBackgroundProcessor, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
     } else if (filterName == "cartoon_simple") {
         // Switch to cartoon filter processor (Simple style)
         auto processor = std::make_unique<CartoonFilterProcessor>();

@@ -10,6 +10,7 @@ set(AI_SOURCES
     pixel_art_processor.cpp
     anime_gan_processor.cpp
     person_tracker_processor.cpp
+    virtual_background_processor.cpp
 )
 
 set(AI_HEADERS
@@ -21,6 +22,7 @@ set(AI_HEADERS
     pixel_art_processor.h
     anime_gan_processor.h
     person_tracker_processor.h
+    virtual_background_processor.h
 )
 
 add_library(AIProcessor STATIC

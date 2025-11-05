@@ -321,7 +321,10 @@ bool PreviewWindowManager::CreateControlPanel() {
     // Add filter options
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"No Effects");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Face Filters");
-    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Virtual Background");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Virtual Background: Blur");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Virtual Background: Solid Color");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Virtual Background: Custom Image");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Virtual Background: Desktop");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Cartoon (Simple)");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Cartoon (Detailed)");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Cartoon (Anime)");
@@ -387,6 +390,8 @@ void PreviewWindowManager::OnFilterSelectionChanged() {
     if (!m_filterComboBox) return;
 
     int selection = SendMessageW(m_filterComboBox, CB_GETCURSEL, 0, 0);
+    std::cout << "[PreviewWindowManager::OnFilterSelectionChanged] Selection index: " << selection << std::endl;
+    
     bool showFaceControls = (selection == 1); // Face Filters
 
     // Show/hide face filter controls
@@ -401,22 +406,26 @@ void PreviewWindowManager::OnFilterSelectionChanged() {
         switch (selection) {
             case 0: filterName = "none"; break;
             case 1: filterName = "face_filter"; break;
-            case 2: filterName = "virtual_background"; break;
-            case 3: filterName = "cartoon_simple"; break;
-            case 4: filterName = "cartoon_detailed"; break;
-            case 5: filterName = "cartoon_anime"; break;
-            case 6: filterName = "cartoon_buffered"; break;
-            case 7: filterName = "pixel_art"; break;
-            case 8: filterName = "pixel_art_anime"; break;
-            case 9: filterName = "pixel_art_retro"; break;
-            case 10: filterName = "style_candy"; break;
-            case 11: filterName = "style_mosaic"; break;
-            case 12: filterName = "style_starry_night"; break;
-            case 13: filterName = "style_la_muse"; break;
-            case 14: filterName = "style_feathers"; break;
-            case 15: filterName = "person_tracker"; break;
+            case 2: filterName = "virtual_background_blur"; break;
+            case 3: filterName = "virtual_background_solid"; break;
+            case 4: filterName = "virtual_background_image"; break;
+            case 5: filterName = "virtual_background_desktop"; break;
+            case 6: filterName = "cartoon_simple"; break;
+            case 7: filterName = "cartoon_detailed"; break;
+            case 8: filterName = "cartoon_anime"; break;
+            case 9: filterName = "cartoon_buffered"; break;
+            case 10: filterName = "pixel_art"; break;
+            case 11: filterName = "pixel_art_anime"; break;
+            case 12: filterName = "pixel_art_retro"; break;
+            case 13: filterName = "style_candy"; break;
+            case 14: filterName = "style_mosaic"; break;
+            case 15: filterName = "style_starry_night"; break;
+            case 16: filterName = "style_la_muse"; break;
+            case 17: filterName = "style_feathers"; break;
+            case 18: filterName = "person_tracker"; break;
             default: filterName = "none"; break;
         }
+        std::cout << "[PreviewWindowManager::OnFilterSelectionChanged] Filter name: '" << filterName << "'" << std::endl;
         m_filterCallback(filterName);
     }
 }
@@ -457,14 +466,18 @@ void PreviewWindowManager::OnControlPanelCommand(HWND hwnd, int id, int code) {
 
         case 1005: // Speech bubble text edit
             if (code == EN_CHANGE && m_filterCallback) {
-                // Get current speech bubble text
-                wchar_t text[256];
-                GetWindowTextW(m_speechBubbleEdit, text, 256);
-                // Convert wide string to narrow string
-                std::wstring wideText(text);
-                std::string narrowText(wideText.begin(), wideText.end());
-                std::string speechText = "speech_text:" + narrowText;
-                m_filterCallback(speechText);
+                // Only process if face filter is active
+                int currentFilter = SendMessageW(m_filterComboBox, CB_GETCURSEL, 0, 0);
+                if (currentFilter == 1) {  // Face Filters
+                    // Get current speech bubble text
+                    wchar_t text[256];
+                    GetWindowTextW(m_speechBubbleEdit, text, 256);
+                    // Convert wide string to narrow string
+                    std::wstring wideText(text);
+                    std::string narrowText(wideText.begin(), wideText.end());
+                    std::string speechText = "speech_text:" + narrowText;
+                    m_filterCallback(speechText);
+                }
             }
             break;
     }
