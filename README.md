@@ -8,9 +8,10 @@ A complete Windows virtual camera solution that captures real camera feeds, proc
 
 ### 📹 **Complete Virtual Camera**
 - ✅ **Browser Support**: Works in Chrome, Edge, Firefox (webcamtests.com verified)
-- ✅ **Application Integration**: Compatible with Zoom, Teams, OBS Studio, Discord
+- ✅ **Application Integration**: Compatible with Zoom (desktop), Teams (desktop), OBS Studio, Discord
 - ✅ **High Performance**: 26+ FPS streaming at 640×480 RGB resolution
 - ✅ **DirectShow Implementation**: Full COM server with Windows integration
+- ⚠️ **UWP Note**: Works with desktop apps; UWP/Store apps require Frame Server (see [UWP Compatibility Guide](docs/UWP_COMPATIBILITY.md))
 
 ### 🎥 **Live Camera Processing**
 - ✅ Real-time camera capture via OpenCV and DirectShow
