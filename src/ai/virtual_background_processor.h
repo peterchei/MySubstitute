@@ -67,6 +67,11 @@ private:
     double m_processingTime;
     int m_frameCounter;
     
+    // Background subtraction for better segmentation
+    cv::Ptr<cv::BackgroundSubtractor> m_bgSubtractor;
+    cv::Mat m_previousFrame;
+    bool m_bgSubtractorInitialized;
+    
     // Cached background (resized to match frame size)
     cv::Mat m_cachedBackground;
     int m_cachedWidth;
@@ -80,6 +85,7 @@ private:
     void CaptureDesktopBackground();
     bool LoadBackgroundImage(const std::string& imagePath);
     cv::Mat ResizeBackgroundToFrame(const cv::Mat& frame);
+    cv::Mat DetectPersonUsingMotionAndFace(const cv::Mat& frame);
 #endif
 };
 

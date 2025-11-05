@@ -16,7 +16,8 @@ VirtualBackgroundProcessor::VirtualBackgroundProcessor()
       m_frameCounter(0),
       m_cachedWidth(0),
       m_cachedHeight(0),
-      m_solidColor(200, 200, 200)
+      m_solidColor(200, 200, 200),
+      m_bgSubtractorInitialized(false)
 {
     std::cout << "[VirtualBackgroundProcessor] Initializing..." << std::endl;
 }
@@ -154,112 +155,224 @@ cv::Mat VirtualBackgroundProcessor::SegmentPerson(const cv::Mat& frame)
             
         } catch (const std::exception& e) {
             std::cerr << "[VirtualBackgroundProcessor] Segmentation error: " << e.what() << std::endl;
-            // Fall through to face detection fallback
+            // Fall through to advanced fallback
             mask = cv::Mat::zeros(frame.size(), CV_8U);
         }
     } else {
-        std::cout << "[VirtualBackgroundProcessor::SegmentPerson] Using face detection + body estimation" << std::endl;
+        // Use combination of methods for better segmentation
+        mask = DetectPersonUsingMotionAndFace(frame);
+    }
+    
+    return mask;
+}
+
+cv::Mat VirtualBackgroundProcessor::DetectPersonUsingMotionAndFace(const cv::Mat& frame)
+{
+    std::cout << "[VirtualBackgroundProcessor] Using motion + face detection for segmentation" << std::endl;
+    
+    cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8U);
+    cv::Mat personMask = cv::Mat::zeros(frame.size(), CV_8U);
+    
+    // Step 1: Initialize background subtractor on first frame
+    if (!m_bgSubtractorInitialized) {
+        // Use MOG2 with better parameters for person detection
+        auto mog2 = cv::createBackgroundSubtractorMOG2(300, 25, true);  // history=300, threshold=25
+        mog2->setDetectShadows(true);  // Detect shadows but don't mark them as foreground
+        mog2->setShadowValue(0);       // Shadow pixels set to 0
+        mog2->setShadowThreshold(0.5); // Shadow detection threshold
+        m_bgSubtractor = mog2;
         
-        // Use face detection to find the person
-        cv::CascadeClassifier faceCascade;
-        std::string faceCascadePath = "C:/opencv/build/etc/haarcascades/haarcascade_frontalface_default.xml";
+        m_previousFrame = frame.clone();
+        m_bgSubtractorInitialized = true;
+        std::cout << "[VirtualBackgroundProcessor] Background subtractor initialized" << std::endl;
         
-        // Try multiple common paths for Haar cascade
-        std::vector<std::string> possiblePaths = {
-            faceCascadePath,
-            "haarcascade_frontalface_default.xml",
-            "C:/opencv/sources/data/haarcascades/haarcascade_frontalface_default.xml",
-            "D:/DevTools/opencv/build/etc/haarcascades/haarcascade_frontalface_default.xml"
-        };
+        // Return center ellipse for first frame
+        cv::Point center(frame.cols / 2, frame.rows / 2);
+        cv::Size axes(frame.cols / 4, frame.rows / 3);
+        cv::ellipse(personMask, center, axes, 0, 0, 360, cv::Scalar(255), -1);
+        cv::GaussianBlur(personMask, personMask, cv::Size(21, 21), 0);
+        return personMask;
+    }
+    
+    // Step 2: Apply background subtraction with low learning rate
+    cv::Mat fgMask;
+    m_bgSubtractor->apply(frame, fgMask, 0.0005);  // Very low learning rate for stable background
+    
+    // Remove shadow pixels (they are marked as 127)
+    cv::threshold(fgMask, fgMask, 200, 255, cv::THRESH_BINARY);
+    
+    // Step 3: Clean up noise with morphological operations
+    cv::Mat kernel3 = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));
+    cv::Mat kernel5 = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+    cv::Mat kernel7 = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(7, 7));
+    
+    // Remove small noise
+    cv::morphologyEx(fgMask, fgMask, cv::MORPH_OPEN, kernel3);
+    // Fill small holes
+    cv::morphologyEx(fgMask, fgMask, cv::MORPH_CLOSE, kernel5);
+    // Expand slightly to ensure we capture full person
+    cv::dilate(fgMask, fgMask, kernel7, cv::Point(-1, -1), 1);
+    
+    // Step 4: Find contours and filter by size/location
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(fgMask.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    
+    bool personDetected = false;
+    
+    if (!contours.empty()) {
+        // Filter contours by area and aspect ratio
+        std::vector<std::vector<cv::Point>> validContours;
+        double minArea = frame.cols * frame.rows * 0.03;  // At least 3% of frame
+        double maxArea = frame.cols * frame.rows * 0.85;  // At most 85% of frame
         
-        bool cascadeLoaded = false;
-        for (const auto& path : possiblePaths) {
-            if (faceCascade.load(path)) {
-                cascadeLoaded = true;
-                std::cout << "[VirtualBackgroundProcessor] Loaded face cascade from: " << path << std::endl;
-                break;
+        for (const auto& contour : contours) {
+            double area = cv::contourArea(contour);
+            if (area > minArea && area < maxArea) {
+                // Check aspect ratio (person should be taller than wide)
+                cv::Rect bbox = cv::boundingRect(contour);
+                double aspectRatio = static_cast<double>(bbox.height) / bbox.width;
+                
+                // Person typically has aspect ratio between 0.8 and 3.0
+                if (aspectRatio > 0.7 && aspectRatio < 3.5) {
+                    validContours.push_back(contour);
+                }
             }
         }
         
-        mask = cv::Mat::zeros(frame.size(), CV_8U);
-        
-        if (cascadeLoaded) {
-            // Detect faces
-            std::vector<cv::Rect> faces;
-            cv::Mat gray;
-            cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
-            cv::equalizeHist(gray, gray);
-            
-            faceCascade.detectMultiScale(gray, faces, 1.1, 3, 0, cv::Size(30, 30));
-            
-            if (!faces.empty()) {
-                std::cout << "[VirtualBackgroundProcessor] Detected " << faces.size() << " face(s)" << std::endl;
+        if (!validContours.empty()) {
+            // If multiple valid contours, use the one closest to center or largest
+            if (validContours.size() == 1) {
+                cv::drawContours(personMask, validContours, 0, cv::Scalar(255), -1);
+                personDetected = true;
+            } else {
+                // Find contour closest to center of frame
+                cv::Point frameCenter(frame.cols / 2, frame.rows / 2);
+                double minDist = std::numeric_limits<double>::max();
+                int bestIdx = 0;
                 
-                // Use the largest face (closest to camera)
-                cv::Rect largestFace = faces[0];
-                for (const auto& face : faces) {
-                    if (face.area() > largestFace.area()) {
-                        largestFace = face;
+                for (size_t i = 0; i < validContours.size(); i++) {
+                    cv::Moments m = cv::moments(validContours[i]);
+                    cv::Point centroid(m.m10 / m.m00, m.m01 / m.m00);
+                    double dist = cv::norm(centroid - frameCenter);
+                    
+                    if (dist < minDist) {
+                        minDist = dist;
+                        bestIdx = i;
                     }
                 }
                 
-                // Estimate body region based on face
-                // Typical body proportions: body is ~3.5x head height, ~2.5x head width
-                int faceHeight = largestFace.height;
-                int faceWidth = largestFace.width;
+                cv::drawContours(personMask, validContours, bestIdx, cv::Scalar(255), -1);
+                personDetected = true;
                 
-                // Expand to include body
-                int bodyWidth = static_cast<int>(faceWidth * 2.8);
-                int bodyHeight = static_cast<int>(faceHeight * 4.0);
+                std::cout << "[VirtualBackgroundProcessor] Selected contour " << bestIdx 
+                          << " from " << validContours.size() << " valid contours" << std::endl;
+            }
+            
+            std::cout << "[VirtualBackgroundProcessor] Detected person contour from motion" << std::endl;
+        }
+    }
+    
+    // Step 5: Face detection to refine or fallback
+    cv::CascadeClassifier faceCascade;
+    std::vector<std::string> possiblePaths = {
+        "C:/opencv/build/etc/haarcascades/haarcascade_frontalface_default.xml",
+        "haarcascade_frontalface_default.xml",
+        "C:/opencv/sources/data/haarcascades/haarcascade_frontalface_default.xml",
+        "D:/DevTools/opencv/build/etc/haarcascades/haarcascade_frontalface_default.xml",
+        "data/haarcascades/haarcascade_frontalface_default.xml"
+    };
+    
+    bool cascadeLoaded = false;
+    for (const auto& path : possiblePaths) {
+        if (faceCascade.load(path)) {
+            cascadeLoaded = true;
+            break;
+        }
+    }
+    
+    if (cascadeLoaded) {
+        std::vector<cv::Rect> faces;
+        cv::Mat gray;
+        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+        cv::equalizeHist(gray, gray);
+        
+        faceCascade.detectMultiScale(gray, faces, 1.1, 4, 0, cv::Size(40, 40));
+        
+        if (!faces.empty()) {
+            cv::Rect largestFace = faces[0];
+            for (const auto& face : faces) {
+                if (face.area() > largestFace.area()) {
+                    largestFace = face;
+                }
+            }
+            
+            // If no motion detected but face found, create body estimate
+            if (!personDetected) {
+                std::cout << "[VirtualBackgroundProcessor] No motion contour, using face detection" << std::endl;
                 
-                int bodyX = largestFace.x + faceWidth / 2 - bodyWidth / 2;
-                int bodyY = largestFace.y - static_cast<int>(faceHeight * 0.3); // Include some area above head
+                // More conservative body estimation
+                int bodyWidth = static_cast<int>(largestFace.width * 2.5);
+                int bodyHeight = static_cast<int>(largestFace.height * 4.2);
+                int bodyX = largestFace.x + largestFace.width / 2 - bodyWidth / 2;
+                int bodyY = largestFace.y - static_cast<int>(largestFace.height * 0.4);
                 
-                // Clamp to frame boundaries
                 bodyX = std::max(0, std::min(bodyX, frame.cols - bodyWidth));
                 bodyY = std::max(0, std::min(bodyY, frame.rows - bodyHeight));
                 bodyWidth = std::min(bodyWidth, frame.cols - bodyX);
                 bodyHeight = std::min(bodyHeight, frame.rows - bodyY);
                 
-                cv::Rect bodyRect(bodyX, bodyY, bodyWidth, bodyHeight);
-                
-                // Create elliptical mask for more natural shape
+                // Use ellipse but with tighter bounds
                 cv::Point center(bodyX + bodyWidth / 2, bodyY + bodyHeight / 2);
                 cv::Size axes(bodyWidth / 2, bodyHeight / 2);
-                cv::ellipse(mask, center, axes, 0, 0, 360, cv::Scalar(255), -1);
+                cv::ellipse(personMask, center, axes, 0, 0, 360, cv::Scalar(255), -1);
                 
-                std::cout << "[VirtualBackgroundProcessor] Created body mask from face detection" << std::endl;
+                personDetected = true;
             } else {
-                std::cout << "[VirtualBackgroundProcessor] No face detected, using center region fallback" << std::endl;
-                // Fallback to center region
-                int centerWidth = static_cast<int>(frame.cols * 0.5);
-                int centerHeight = static_cast<int>(frame.rows * 0.7);
-                int startX = (frame.cols - centerWidth) / 2;
-                int startY = (frame.rows - centerHeight) / 2;
+                // If we have both motion and face, ensure face region is included
+                cv::Rect expandedFace(
+                    std::max(0, largestFace.x - largestFace.width / 2),
+                    std::max(0, largestFace.y - largestFace.height / 2),
+                    std::min(largestFace.width * 2, frame.cols),
+                    std::min(largestFace.height * 2, frame.rows)
+                );
                 
-                cv::Point center(frame.cols / 2, frame.rows / 2);
-                cv::Size axes(centerWidth / 2, centerHeight / 2);
-                cv::ellipse(mask, center, axes, 0, 0, 360, cv::Scalar(255), -1);
+                // Make sure face area is definitely in the mask
+                cv::Point faceCenter(largestFace.x + largestFace.width / 2, 
+                                    largestFace.y + largestFace.height / 2);
+                cv::circle(personMask, faceCenter, largestFace.width, cv::Scalar(255), -1);
             }
-        } else {
-            std::cout << "[VirtualBackgroundProcessor] Face cascade not found, using center region" << std::endl;
-            // Fallback to center ellipse if cascade can't be loaded
-            int centerWidth = static_cast<int>(frame.cols * 0.5);
-            int centerHeight = static_cast<int>(frame.rows * 0.7);
-            
-            cv::Point center(frame.cols / 2, frame.rows / 2);
-            cv::Size axes(centerWidth / 2, centerHeight / 2);
-            cv::ellipse(mask, center, axes, 0, 0, 360, cv::Scalar(255), -1);
         }
-        
-        // Apply Gaussian blur to make edges soft
-        cv::GaussianBlur(mask, mask, cv::Size(51, 51), 0);
-        
-        std::cout << "[VirtualBackgroundProcessor::SegmentPerson] Segmentation complete, person pixels: " 
-                  << cv::countNonZero(mask) << " / " << (mask.rows * mask.cols) << std::endl;
     }
     
-    return mask;
+    // Step 6: Last resort fallback to center region (only if really nothing detected)
+    if (!personDetected) {
+        std::cout << "[VirtualBackgroundProcessor] No detection, using center fallback" << std::endl;
+        cv::Point center(frame.cols / 2, frame.rows / 2);
+        cv::Size axes(frame.cols / 5, frame.rows / 3);  // Smaller fallback
+        cv::ellipse(personMask, center, axes, 0, 0, 360, cv::Scalar(255), -1);
+    }
+    
+    // Step 7: Edge refinement using bilateral filter for better edge quality
+    cv::Mat refinedMask;
+    personMask.convertTo(refinedMask, CV_32F, 1.0 / 255.0);
+    
+    // Apply bilateral filter to preserve edges while smoothing
+    cv::Mat smoothMask;
+    cv::bilateralFilter(refinedMask, smoothMask, 9, 75, 75);
+    
+    // Convert back and apply light Gaussian blur
+    smoothMask.convertTo(personMask, CV_8U, 255.0);
+    cv::GaussianBlur(personMask, personMask, cv::Size(15, 15), 0);
+    
+    int nonZeroPixels = cv::countNonZero(personMask);
+    int totalPixels = personMask.rows * personMask.cols;
+    double percentage = 100.0 * nonZeroPixels / totalPixels;
+    
+    std::cout << "[VirtualBackgroundProcessor] Person mask: " << nonZeroPixels << " / " << totalPixels 
+              << " (" << percentage << "%) - Detection: " 
+              << (personDetected ? "Motion/Face" : "Fallback") << std::endl;
+    
+    return personMask;
 }
 
 cv::Mat VirtualBackgroundProcessor::GetBackgroundFrame(const cv::Mat& frame)
