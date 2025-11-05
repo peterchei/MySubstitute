@@ -68,7 +68,7 @@ void OnFilterChanged(const std::string& filterName) {
         // Switch to virtual background processor (Blur mode)
         auto processor = std::make_unique<VirtualBackgroundProcessor>();
         processor->SetBackgroundMode(VirtualBackgroundProcessor::BLUR);
-        processor->SetBlurStrength(21);  // Default blur strength
+        processor->SetBlurStrength(51);  // Stronger blur (was 21)
         g_processor = std::move(processor);
         if (g_processor->Initialize()) {
             std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Blur mode)" << std::endl;
@@ -113,6 +113,18 @@ void OnFilterChanged(const std::string& filterName) {
         g_processor = std::move(processor);
         if (g_processor->Initialize()) {
             std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Desktop Capture mode)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize VirtualBackgroundProcessor, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "virtual_background_minecraft") {
+        // Switch to virtual background processor (Minecraft Pixel mode)
+        auto processor = std::make_unique<VirtualBackgroundProcessor>();
+        processor->SetBackgroundMode(VirtualBackgroundProcessor::MINECRAFT_PIXEL);
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: " << g_processor->GetName() << " (Minecraft Pixel mode)" << std::endl;
         } else {
             std::cout << "[OnFilterChanged] Failed to initialize VirtualBackgroundProcessor, falling back to passthrough" << std::endl;
             g_processor = std::make_unique<PassthroughProcessor>();

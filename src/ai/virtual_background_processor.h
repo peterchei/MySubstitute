@@ -20,7 +20,8 @@ public:
         BLUR,              // Blur the background
         SOLID_COLOR,       // Replace with solid color
         CUSTOM_IMAGE,      // Use custom image
-        DESKTOP_CAPTURE    // Use Windows desktop as background
+        DESKTOP_CAPTURE,   // Use Windows desktop as background
+        MINECRAFT_PIXEL    // Minecraft-style pixelated background
     };
 
     VirtualBackgroundProcessor();
@@ -88,6 +89,7 @@ private:
     bool LoadBackgroundImage(const std::string& imagePath);
     cv::Mat ResizeBackgroundToFrame(const cv::Mat& frame);
     cv::Mat DetectPersonUsingMotionAndFace(const cv::Mat& frame);
+    cv::Mat CreateMinecraftPixelBackground(const cv::Mat& frame);
 #endif
 };
 

@@ -467,6 +467,13 @@ cv::Mat VirtualBackgroundProcessor::GetBackgroundFrame(const cv::Mat& frame)
             break;
         }
         
+        case MINECRAFT_PIXEL: {
+            // Create Minecraft-style pixelated background
+            background = CreateMinecraftPixelBackground(frame);
+            std::cout << "[VirtualBackgroundProcessor] Applying MINECRAFT_PIXEL mode" << std::endl;
+            break;
+        }
+        
         default:
             break;
     }
@@ -557,12 +564,15 @@ cv::Mat VirtualBackgroundProcessor::BlendFrames(const cv::Mat& foreground, const
     cv::Mat result2 = background.clone();
     for (int y = 0; y < foreground.rows; y++) {
         for (int x = 0; x < foreground.cols; x++) {
-            float alpha = maskFloat.at<float>(y, x) * m_blendAlpha;
+            float alpha = maskFloat.at<float>(y, x);
             
             if (foreground.channels() == 3) {
                 cv::Vec3b fgPixel = foreground.at<cv::Vec3b>(y, x);
                 cv::Vec3b bgPixel = background.at<cv::Vec3b>(y, x);
                 
+                // If alpha is high (person), use foreground directly
+                // If alpha is low (background), use background
+                // Only blend at the edges
                 result2.at<cv::Vec3b>(y, x) = cv::Vec3b(
                     static_cast<uchar>(fgPixel[0] * alpha + bgPixel[0] * (1.0 - alpha)),
                     static_cast<uchar>(fgPixel[1] * alpha + bgPixel[1] * (1.0 - alpha)),
@@ -754,4 +764,70 @@ std::map<std::string, std::string> VirtualBackgroundProcessor::GetParameters() c
 double VirtualBackgroundProcessor::GetExpectedProcessingTime() const
 {
     return m_processingTime;
+}
+
+cv::Mat VirtualBackgroundProcessor::CreateMinecraftPixelBackground(const cv::Mat& frame)
+{
+    // Minecraft-style pixelated effect with sharp, stable pixels
+    // Using the same approach as PixelArtProcessor for consistency
+    
+    const int pixelSize = 8;  // 8x8 blocks for Minecraft style
+    const int colorLevels = 6;  // Limited color palette
+    
+    cv::Mat result = frame.clone();
+    
+    // Step 1: Enhance saturation for vibrant Minecraft-like colors
+    cv::Mat hsv;
+    cv::cvtColor(result, hsv, cv::COLOR_BGR2HSV);
+    std::vector<cv::Mat> channels;
+    cv::split(hsv, channels);
+    channels[1] = channels[1] * 1.4; // Boost saturation
+    cv::merge(channels, hsv);
+    cv::cvtColor(hsv, result, cv::COLOR_HSV2BGR);
+    
+    // Step 2: Pixelate - downsample then upsample with nearest neighbor
+    int newWidth = std::max(1, result.cols / pixelSize);
+    int newHeight = std::max(1, result.rows / pixelSize);
+    
+    cv::Mat small;
+    cv::resize(result, small, cv::Size(newWidth, newHeight), 0, 0, cv::INTER_LINEAR);
+    
+    // Upsample back with nearest neighbor for sharp, blocky effect
+    cv::Mat pixelated;
+    cv::resize(small, pixelated, result.size(), 0, 0, cv::INTER_NEAREST);
+    
+    // Step 3: Quantize colors to fewer levels for blocky color palette
+    int step = 256 / colorLevels;
+    for (int y = 0; y < pixelated.rows; ++y) {
+        cv::Vec3b* row = pixelated.ptr<cv::Vec3b>(y);
+        for (int x = 0; x < pixelated.cols; ++x) {
+            for (int c = 0; c < 3; ++c) {
+                int val = row[x][c];
+                row[x][c] = (val / step) * step + step / 2;
+            }
+        }
+    }
+    
+    // Step 4: Add strong black edge outlines (optional but looks good)
+    cv::Mat gray, edges;
+    cv::cvtColor(pixelated, gray, cv::COLOR_BGR2GRAY);
+    cv::Canny(gray, edges, 50, 150);
+    
+    // Dilate edges slightly
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2, 2));
+    cv::dilate(edges, edges, kernel);
+    
+    // Apply black outlines where edges are detected
+    for (int y = 0; y < pixelated.rows; ++y) {
+        cv::Vec3b* row = pixelated.ptr<cv::Vec3b>(y);
+        const uint8_t* edgeRow = edges.ptr<uint8_t>(y);
+        
+        for (int x = 0; x < pixelated.cols; ++x) {
+            if (edgeRow[x] > 0) {
+                row[x] = cv::Vec3b(0, 0, 0);  // Black outline
+            }
+        }
+    }
+    
+    return pixelated;
 }
