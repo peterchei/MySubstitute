@@ -13,6 +13,7 @@
 #include "ai/cartoon_buffered_filter_processor.h"
 #include "ai/pixel_art_processor.h"
 #include "ai/anime_gan_processor.h"
+#include "ai/person_tracker_processor.h"
 #include "virtual_camera/virtual_camera_filter.h"
 #include "virtual_camera/virtual_camera_manager.h"
 #include "virtual_camera/camera_diagnostics.h"
@@ -204,6 +205,17 @@ void OnFilterChanged(const std::string& filterName) {
             std::cout << "[OnFilterChanged] Switched to: Feathers Style (AI)" << std::endl;
         } else {
             std::cout << "[OnFilterChanged] Failed to initialize Feathers style, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "person_tracker") {
+        // Switch to Person Tracker (Motion Detection) processor
+        auto processor = std::make_unique<PersonTrackerProcessor>();
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: Person Tracker (Motion Detection)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize Person Tracker, falling back to passthrough" << std::endl;
             g_processor = std::make_unique<PassthroughProcessor>();
             g_processor->Initialize();
         }

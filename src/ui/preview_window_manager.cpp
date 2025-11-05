@@ -334,6 +334,7 @@ bool PreviewWindowManager::CreateControlPanel() {
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Style: Starry Night");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Style: La Muse");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Style: Feathers");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Person Detector (Motion Tracker)");
     SendMessageW(m_filterComboBox, CB_SETCURSEL, 0, 0);
 
     // Create face filter controls
@@ -413,6 +414,7 @@ void PreviewWindowManager::OnFilterSelectionChanged() {
             case 12: filterName = "style_starry_night"; break;
             case 13: filterName = "style_la_muse"; break;
             case 14: filterName = "style_feathers"; break;
+            case 15: filterName = "person_tracker"; break;
             default: filterName = "none"; break;
         }
         m_filterCallback(filterName);
