@@ -21,6 +21,15 @@ A complete Windows virtual camera solution that captures real camera feeds, proc
 ### 🤖 **AI Processing Pipeline**
 - ✅ Pluggable AI processor architecture with multiple filter options
 - ✅ **Face Filters**: Virtual glasses, funny hats, and speech bubbles with real-time face detection
+- ✅ **Virtual Backgrounds**: Professional background replacement with 5 modes
+  - Blur background (adjustable blur strength)
+  - Solid color background (customizable green screen)
+  - Custom image background (load your own images)
+  - Desktop capture background (use desktop as backdrop)
+  - Minecraft pixel background (blocky pixelated effect)
+  - Advanced person detection using motion tracking and face detection
+  - Temporal smoothing for stable, flicker-free masking
+  - Sharp edge detection with smooth alpha blending
 - ✅ **Cartoon Effects**: Two cartoon styles with edge detection and color quantization
   - Standard cartoon filter with temporal blending
   - Buffered cartoon filter with enhanced stability
@@ -36,9 +45,14 @@ A complete Windows virtual camera solution that captures real camera feeds, proc
 ### 📱 **Live Preview System**
 - ✅ Mobile phone-sized preview window (270x480)
 - ✅ Real-time display of processed video feed with filter selection
-- ✅ Filter dropdown menu with 8 effects:
+- ✅ Filter dropdown menu with 13+ effects:
   - No Effects (passthrough with captions)
   - Face Filters (glasses, hats, speech bubbles)
+  - Virtual Background: Blur (strong blur effect)
+  - Virtual Background: Solid Color (green screen)
+  - Virtual Background: Custom Image (load your images)
+  - Virtual Background: Desktop (capture desktop as background)
+  - Virtual Background: Minecraft Pixel (blocky pixelated background)
   - Cartoon Effect (standard with temporal blending)
   - Cartoon Buffered (enhanced stability)
   - Pixel Art Minecraft (blocky 8×8)
@@ -60,8 +74,9 @@ A complete Windows virtual camera solution that captures real camera feeds, proc
 Physical Camera → AI Processing → Shared Memory → Virtual Camera → Applications
       ↓              ↓               ↓              ↓              ↓
   DirectShow → Filter Effects → Inter-Process → DirectShow → Chrome/Zoom/OBS
-  (30 FPS)    (8 Filter Types)   Communication    (26+ FPS)    (Live Stream)
-              Face/Cartoon/Pixel
+  (30 FPS)    (13+ Filter Types)  Communication    (26+ FPS)    (Live Stream)
+              Face/VirtualBG/
+              Cartoon/Pixel
 ```
 
 ### **Inter-Process Communication Pipeline**
@@ -109,6 +124,14 @@ Main Process:                    DirectShow DLL:
   - Virtual glasses overlay with positioning
   - Funny hat accessory with scaling
   - Speech bubble with customizable text
+- ✅ `VirtualBackgroundProcessor`: Professional background replacement with person segmentation
+  - Motion-based background subtraction (MOG2 algorithm)
+  - Face detection for body estimation
+  - Contour filtering with size and aspect ratio validation
+  - Temporal smoothing for stable, flicker-free masking
+  - 5 background modes: Blur, Solid Color, Custom Image, Desktop Capture, Minecraft Pixel
+  - Adjustable blur strength and solid color customization
+  - Sharp edge detection with smooth alpha blending
 - ✅ `CartoonFilterProcessor`: Anime-style cartoon effect
   - Bilateral filtering for smooth colors
   - Laplacian edge detection with hysteresis
@@ -129,7 +152,7 @@ Main Process:                    DirectShow DLL:
 
 #### **4. Live Preview System (`src/ui/`)**
 - ✅ `PreviewWindowManager`: Mobile phone-sized video preview (270x480)
-  - Filter selection combo box with 8 filter options
+  - Filter selection combo box with 13+ filter options
   - Face filter controls (glasses, hat, speech bubble checkboxes)
   - Speech bubble text input field
   - Real-time filter switching via callback system
@@ -197,13 +220,14 @@ run.bat
 1. **Open Your App**: Chrome, Zoom, Teams, OBS Studio, etc.
 2. **Select Camera**: Look for "MySubstitute Virtual Camera" in camera dropdown
 3. **Live Streaming**: 26+ FPS AI-processed video streams to your application
-4. **Choose Filter**: Use preview window to select from 8 different effects
-5. **Real-time Effects**: Face filters, cartoon styles, or pixel art applied live
+4. **Choose Filter**: Use preview window to select from 13+ different effects including virtual backgrounds
+5. **Real-time Effects**: Face filters, virtual backgrounds, cartoon styles, or pixel art applied live
 
 ### **Live Video Experience**
 1. **Select Input Camera**: Choose from available cameras via tray menu
-2. **Choose AI Filter**: Select from 8 effects in preview window:
+2. **Choose AI Filter**: Select from 13+ effects in preview window:
    - Face filters with accessories and speech bubbles
+   - Virtual backgrounds (blur, solid color, custom image, desktop, Minecraft pixel)
    - Cartoon effects (standard or buffered for stability)
    - Pixel art (Minecraft, Anime, or Retro 16-bit styles)
 3. **Customize Effects**: Adjust filter-specific settings in preview panel
@@ -214,8 +238,11 @@ run.bat
 
 ### **Controls & Features**
 - **Virtual Camera**: Appears in all video applications as "MySubstitute Virtual Camera"
-- **8 Live Filters**: Face detection, cartoon effects, pixel art styles
+- **13+ Live Filters**: Face detection, virtual backgrounds, cartoon effects, pixel art styles
 - **Filter Switching**: Change effects in real-time without crashes (thread-safe)
+- **Virtual Backgrounds**: Professional background replacement with 5 modes (blur, solid color, custom image, desktop, Minecraft pixel)
+- **Person Segmentation**: Advanced motion tracking and face detection for accurate person detection
+- **Temporal Smoothing**: Stable, flicker-free background masking
 - **Face Accessories**: Glasses, hats, and speech bubbles with customizable text
 - **Temporal Stabilization**: Smooth, flicker-free video output
 - **Tray Menu**: Right-click for camera selection and application controls
@@ -230,12 +257,13 @@ run.bat
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │  Real Camera    │───▶│  AI Processing   │───▶│ Shared Memory   │───▶│  Applications   │
-│  (DirectShow)   │    │  (8 Filters)     │    │ (Inter-Process) │    │ (Chrome/Zoom)   │
+│  (DirectShow)   │    │  (13+ Filters)   │    │ (Inter-Process) │    │ (Chrome/Zoom)   │
 │                 │    │                  │    │                 │    │                 │
 │ • Camera enum   │    │ • Face detection │    │ • RGB24 frames  │    │ • 26+ FPS       │
-│ • 30 FPS        │    │ • Cartoon effects│    │ • 640×480       │    │ • Browser ready │
-│ • Multi-device  │    │ • Pixel art      │    │ • Thread-safe   │    │ • Live streaming│
-│                 │    │ • Stabilization  │    │ • Mutex protect │    │ • Smooth video  │
+│ • 30 FPS        │    │ • Virtual BG     │    │ • 640×480       │    │ • Browser ready │
+│ • Multi-device  │    │ • Cartoon effects│    │ • Thread-safe   │    │ • Live streaming│
+│                 │    │ • Pixel art      │    │ • Mutex protect │    │ • Smooth video  │
+│                 │    │ • Stabilization  │    │                 │    │                 │
 └─────────────────┘    └──────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 ```
@@ -288,10 +316,11 @@ src/
 ├── capture/                    # Camera capture system
 │   ├── camera_capture.*        # DirectShow + OpenCV camera access  
 │   └── frame.*                # Thread-safe frame data structures
-├── ai/                        # Processing pipeline (8 filters)
+├── ai/                        # Processing pipeline (13+ filters)
 │   ├── ai_processor.*         # Abstract processor interface
 │   ├── passthrough_processor.* # Caption and overlay processor
 │   ├── face_filter_processor.* # Face detection with accessories
+│   ├── virtual_background_processor.* # Background replacement with person segmentation
 │   ├── cartoon_filter_processor.* # Anime-style cartoon effect
 │   ├── cartoon_buffered_filter_processor.* # Buffered cartoon
 │   └── pixel_art_processor.*  # Pixel art (Minecraft/Anime/Retro)
@@ -329,13 +358,15 @@ src/
 - ✅ **Browser Compatibility**: IKsPropertySet implementation for web browsers
 
 ### 🚧 **Future Enhancement Opportunities**
-- 🚧 **Advanced AI Filters**: Background replacement with segmentation models
+- 🚧 **Advanced AI Models**: Deep learning segmentation for improved person detection
+- 🚧 **More Background Effects**: Additional artistic backgrounds and effects
 - 🚧 **More Pixel Art Styles**: Additional retro gaming aesthetics
-- 🚧 **Filter Parameters UI**: Sliders for color levels, pixel size, edge strength
+- 🚧 **Filter Parameters UI**: Sliders for blur strength, color levels, pixel size, edge strength
 - 🚧 **GPU Acceleration**: CUDA/DirectML integration for performance
 - 🚧 **Windows Service**: Always-on operation with system startup
 - 🚧 **Multiple Resolutions**: 1080p, 720p format support expansion
 - 🚧 **Filter Presets**: Save and load custom filter configurations
+- 🚧 **Custom Background Library**: Built-in collection of background images
 
 ### 🎯 **Success Metrics Achieved**
 - ✅ **Performance**: 26+ FPS sustained streaming in production
