@@ -17,7 +17,8 @@ VirtualBackgroundProcessor::VirtualBackgroundProcessor()
       m_cachedWidth(0),
       m_cachedHeight(0),
       m_solidColor(200, 200, 200),
-      m_bgSubtractorInitialized(false)
+      m_bgSubtractorInitialized(false),
+      m_stableFrameCount(0)
 {
     std::cout << "[VirtualBackgroundProcessor] Initializing..." << std::endl;
 }
@@ -352,9 +353,45 @@ cv::Mat VirtualBackgroundProcessor::DetectPersonUsingMotionAndFace(const cv::Mat
         cv::ellipse(personMask, center, axes, 0, 0, 360, cv::Scalar(255), -1);
     }
     
-    // Step 7: Edge refinement using bilateral filter for better edge quality
+    // Step 7: Calculate percentage for adaptive smoothing
+    int nonZeroPixels = cv::countNonZero(personMask);
+    int totalPixels = personMask.rows * personMask.cols;
+    double percentage = 100.0 * nonZeroPixels / totalPixels;
+    
+    // Step 8: Edge refinement using bilateral filter for better edge quality
     cv::Mat refinedMask;
     personMask.convertTo(refinedMask, CV_32F, 1.0 / 255.0);
+    
+    // Step 9: Temporal smoothing - blend with previous mask to reduce flickering
+    if (!m_previousMask.empty() && m_previousMask.size() == personMask.size()) {
+        cv::Mat prevMaskFloat;
+        m_previousMask.convertTo(prevMaskFloat, CV_32F, 1.0 / 255.0);
+        
+        // Adaptive blending based on detection confidence
+        double alpha = 0.7;  // Weight for current frame
+        double beta = 0.3;   // Weight for previous frame
+        
+        // If current detection is weak (too small or too large), rely more on previous
+        if (percentage < 5.0 || percentage > 80.0) {
+            alpha = 0.4;  // Less weight on current (probably bad detection)
+            beta = 0.6;   // More weight on previous
+        } else if (percentage > 10.0 && percentage < 70.0) {
+            // Good detection range, can trust current frame more
+            alpha = 0.8;
+            beta = 0.2;
+            m_stableFrameCount++;
+        } else {
+            m_stableFrameCount = 0;
+        }
+        
+        // Blend current and previous masks
+        cv::addWeighted(refinedMask, alpha, prevMaskFloat, beta, 0.0, refinedMask);
+        
+        std::cout << "[VirtualBackgroundProcessor] Temporal smoothing: alpha=" << alpha 
+                  << ", stable_frames=" << m_stableFrameCount << std::endl;
+    } else {
+        std::cout << "[VirtualBackgroundProcessor] First mask, no temporal smoothing" << std::endl;
+    }
     
     // Apply bilateral filter to preserve edges while smoothing
     cv::Mat smoothMask;
@@ -364,9 +401,8 @@ cv::Mat VirtualBackgroundProcessor::DetectPersonUsingMotionAndFace(const cv::Mat
     smoothMask.convertTo(personMask, CV_8U, 255.0);
     cv::GaussianBlur(personMask, personMask, cv::Size(15, 15), 0);
     
-    int nonZeroPixels = cv::countNonZero(personMask);
-    int totalPixels = personMask.rows * personMask.cols;
-    double percentage = 100.0 * nonZeroPixels / totalPixels;
+    // Store current mask for next frame
+    m_previousMask = personMask.clone();
     
     std::cout << "[VirtualBackgroundProcessor] Person mask: " << nonZeroPixels << " / " << totalPixels 
               << " (" << percentage << "%) - Detection: " 

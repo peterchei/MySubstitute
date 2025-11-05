@@ -70,7 +70,9 @@ private:
     // Background subtraction for better segmentation
     cv::Ptr<cv::BackgroundSubtractor> m_bgSubtractor;
     cv::Mat m_previousFrame;
+    cv::Mat m_previousMask;  // Store previous mask for temporal smoothing
     bool m_bgSubtractorInitialized;
+    int m_stableFrameCount;  // Count frames with stable detection
     
     // Cached background (resized to match frame size)
     cv::Mat m_cachedBackground;
