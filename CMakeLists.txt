@@ -225,3 +225,24 @@ if(HAVE_OPENCV)
 else()
     target_compile_definitions(test_filter_callback PRIVATE HAVE_OPENCV=0)
 endif()
+
+# AnimeGAN GPU acceleration test
+add_executable(test_anime_gpu
+    test_anime_gpu.cpp
+)
+
+target_include_directories(test_anime_gpu PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_anime_gpu
+    AIProcessor
+    ${OpenCV_LIBS}
+)
+
+# Configure preprocessor definitions for test
+if(HAVE_OPENCV)
+    target_compile_definitions(test_anime_gpu PRIVATE HAVE_OPENCV=1)
+else()
+    target_compile_definitions(test_anime_gpu PRIVATE HAVE_OPENCV=0)
+endif()
