@@ -4,6 +4,15 @@
 
 A complete Windows virtual camera solution that captures real camera feeds, processes them through AI algorithms, and streams the processed video to any application. **Now working in browsers, video conferencing apps, and streaming software at 26+ FPS.**
 
+## 📚 Quick Links
+
+- **Getting Started**: See [Quick Start Guide](docs/QUICKSTART.md)
+- **Setup & Installation**: See [Development Setup](docs/development_setup.md)
+- **Virtual Background**: See [Virtual Background Setup](docs/VIRTUAL_BACKGROUND_SETUP.md)
+- **UI Controls**: See [UI Virtual Background Controls](docs/UI_VIRTUAL_BACKGROUND_CONTROLS.md)
+- **Architecture**: See [Filter Architecture](docs/FILTER_ARCHITECTURE.md)
+- **All Documentation**: See [docs/](docs/) folder
+
 ## 🎉 **Production Features - Working Now**
 
 ### 📹 **Complete Virtual Camera**
