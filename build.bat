@@ -58,4 +58,5 @@ echo Executable location: build\bin\Debug\MySubstitute.exe
 echo.
 echo You can now run: run.bat
 echo.
+cd ..
 pause

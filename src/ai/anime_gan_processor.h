@@ -49,6 +49,9 @@ public:
     void SetInputSize(int width, int height);
     void SetBlendWeight(float weight);  // 0.0 = original, 1.0 = full anime
     bool IsGPUAvailable() const;
+    void SetUseGPU(bool useGPU);
+    void SetUseFP16(bool useFP16);  // Enable half-precision for faster GPU inference
+    std::string GetGPUInfo() const;
 
 private:
 #ifdef HAVE_OPENCV
@@ -62,6 +65,10 @@ private:
     float m_blendWeight;  // Blend between original and anime (0.0 to 1.0)
     bool m_gpuAvailable;
     bool m_modelLoaded;
+    bool m_useGPU;
+    bool m_useFP16;  // Use half-precision (FP16) for faster GPU inference
+    cv::dnn::Backend m_backend;
+    cv::dnn::Target m_target;
     
     // Temporal stabilization
     cv::Mat m_previousOutput;
