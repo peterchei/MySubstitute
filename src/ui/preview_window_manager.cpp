@@ -686,7 +686,8 @@ void PreviewWindowManager::OnTimer() {
 }
 
 void PreviewWindowManager::SetMobilePhoneSize() {
-    RECT rect = { 0, 0, m_width, m_height };
+    // Include control panel width in window size calculation
+    RECT rect = { 0, 0, m_width + CONTROL_PANEL_WIDTH, m_height };
     AdjustWindowRect(&rect, GetWindowLongW(m_hwnd, GWL_STYLE), FALSE);
     
     int windowWidth = rect.right - rect.left;
