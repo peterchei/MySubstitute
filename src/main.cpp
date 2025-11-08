@@ -330,6 +330,29 @@ void OnFilterChanged(const std::string& filterName) {
             faceFilter->SetSpeechBubbleEnabled(false);
             std::cout << "[OnFilterChanged] Speech bubble disabled" << std::endl;
         }
+    } else if (filterName.find("segmentation_method:") == 0) {
+        // Update segmentation method for virtual background processor
+        if (auto vbProcessor = dynamic_cast<VirtualBackgroundProcessor*>(g_processor.get())) {
+            std::string method = filterName.substr(20); // Remove "segmentation_method:" prefix
+            if (method == "motion") {
+                vbProcessor->SetSegmentationMethod(VirtualBackgroundProcessor::METHOD_MOTION);
+                std::cout << "[OnFilterChanged] Segmentation method changed to: Motion Detection" << std::endl;
+            } else if (method == "onnx") {
+                vbProcessor->SetSegmentationMethod(VirtualBackgroundProcessor::METHOD_ONNX_SELFIE);
+                std::cout << "[OnFilterChanged] Segmentation method changed to: ONNX (MediaPipe)" << std::endl;
+            } else if (method == "opencv_dnn") {
+                vbProcessor->SetSegmentationMethod(VirtualBackgroundProcessor::METHOD_OPENCV_DNN);
+                std::cout << "[OnFilterChanged] Segmentation method changed to: OpenCV DNN" << std::endl;
+            }
+        }
+    } else if (filterName.find("gpu_acceleration:") == 0) {
+        // Update GPU acceleration for virtual background processor
+        if (auto vbProcessor = dynamic_cast<VirtualBackgroundProcessor*>(g_processor.get())) {
+            std::string setting = filterName.substr(17); // Remove "gpu_acceleration:" prefix
+            bool enableGPU = (setting == "on");
+            vbProcessor->SetUseGPU(enableGPU);
+            std::cout << "[OnFilterChanged] GPU acceleration " << (enableGPU ? "enabled" : "disabled") << std::endl;
+        }
     } else {
         std::cout << "[OnFilterChanged] Unknown filter: " << filterName << std::endl;
     }

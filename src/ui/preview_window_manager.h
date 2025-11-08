@@ -131,6 +131,8 @@ private:
     HWND m_hatCheckBox;
     HWND m_speechBubbleCheckBox;
     HWND m_speechBubbleEdit;
+    HWND m_segmentationMethodComboBox;
+    HWND m_gpuAccelerationComboBox;
     
     // Rendering
     HDC m_memDC;

@@ -16,6 +16,13 @@ PreviewWindowManager::PreviewWindowManager()
     , m_alwaysOnTop(false)
     , m_width(DEFAULT_WIDTH)
     , m_height(DEFAULT_HEIGHT)
+    , m_filterComboBox(nullptr)
+    , m_glassesCheckBox(nullptr)
+    , m_hatCheckBox(nullptr)
+    , m_speechBubbleCheckBox(nullptr)
+    , m_speechBubbleEdit(nullptr)
+    , m_segmentationMethodComboBox(nullptr)
+    , m_gpuAccelerationComboBox(nullptr)
 {
     ZeroMemory(&m_bitmapInfo, sizeof(m_bitmapInfo));
 }
@@ -378,7 +385,50 @@ bool PreviewWindowManager::CreateControlPanel() {
         m_hwnd, (HMENU)1005, m_hInstance, nullptr
     );
 
-    // Initially hide face filter controls
+    // Segmentation Method selection (for Virtual Background)
+    CreateWindowExW(
+        0, L"STATIC", L"Segmentation Method:",
+        WS_CHILD | WS_VISIBLE,
+        m_width + 10, 180, CONTROL_PANEL_WIDTH - 20, 20,
+        m_hwnd, nullptr, m_hInstance, nullptr
+    );
+
+    m_segmentationMethodComboBox = CreateWindowExW(
+        0, L"COMBOBOX", nullptr,
+        WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+        m_width + 10, 200, CONTROL_PANEL_WIDTH - 20, 100,
+        m_hwnd, (HMENU)1006, m_hInstance, nullptr
+    );
+
+    if (m_segmentationMethodComboBox) {
+        SendMessageW(m_segmentationMethodComboBox, CB_ADDSTRING, 0, (LPARAM)L"Motion Detection");
+        SendMessageW(m_segmentationMethodComboBox, CB_ADDSTRING, 0, (LPARAM)L"ONNX (MediaPipe)");
+        SendMessageW(m_segmentationMethodComboBox, CB_ADDSTRING, 0, (LPARAM)L"OpenCV DNN");
+        SendMessageW(m_segmentationMethodComboBox, CB_SETCURSEL, 1, 0);  // Default to ONNX
+    }
+
+    // GPU Acceleration selection
+    CreateWindowExW(
+        0, L"STATIC", L"GPU Acceleration:",
+        WS_CHILD | WS_VISIBLE,
+        m_width + 10, 230, CONTROL_PANEL_WIDTH - 20, 20,
+        m_hwnd, nullptr, m_hInstance, nullptr
+    );
+
+    m_gpuAccelerationComboBox = CreateWindowExW(
+        0, L"COMBOBOX", nullptr,
+        WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+        m_width + 10, 250, CONTROL_PANEL_WIDTH - 20, 80,
+        m_hwnd, (HMENU)1007, m_hInstance, nullptr
+    );
+
+    if (m_gpuAccelerationComboBox) {
+        SendMessageW(m_gpuAccelerationComboBox, CB_ADDSTRING, 0, (LPARAM)L"CPU");
+        SendMessageW(m_gpuAccelerationComboBox, CB_ADDSTRING, 0, (LPARAM)L"GPU (CUDA/DirectML)");
+        SendMessageW(m_gpuAccelerationComboBox, CB_SETCURSEL, 1, 0);  // Default to GPU
+    }
+
+    // Initially hide face filter controls and virtual background controls
     ShowWindow(m_glassesCheckBox, SW_HIDE);
     ShowWindow(m_hatCheckBox, SW_HIDE);
     ShowWindow(m_speechBubbleCheckBox, SW_HIDE);
@@ -394,12 +444,21 @@ void PreviewWindowManager::OnFilterSelectionChanged() {
     std::cout << "[PreviewWindowManager::OnFilterSelectionChanged] Selection index: " << selection << std::endl;
     
     bool showFaceControls = (selection == 1); // Face Filters
+    bool showVirtualBgControls = (selection >= 2 && selection <= 6); // Virtual Background filters
 
     // Show/hide face filter controls
     ShowWindow(m_glassesCheckBox, showFaceControls ? SW_SHOW : SW_HIDE);
     ShowWindow(m_hatCheckBox, showFaceControls ? SW_SHOW : SW_HIDE);
     ShowWindow(m_speechBubbleCheckBox, showFaceControls ? SW_SHOW : SW_HIDE);
     ShowWindow(m_speechBubbleEdit, showFaceControls ? SW_SHOW : SW_HIDE);
+
+    // Show/hide virtual background controls
+    if (m_segmentationMethodComboBox) {
+        ShowWindow(m_segmentationMethodComboBox, showVirtualBgControls ? SW_SHOW : SW_HIDE);
+    }
+    if (m_gpuAccelerationComboBox) {
+        ShowWindow(m_gpuAccelerationComboBox, showVirtualBgControls ? SW_SHOW : SW_HIDE);
+    }
 
     // Notify callback if set
     if (m_filterCallback) {
@@ -474,12 +533,40 @@ void PreviewWindowManager::OnControlPanelCommand(HWND hwnd, int id, int code) {
                     // Get current speech bubble text
                     wchar_t text[256];
                     GetWindowTextW(m_speechBubbleEdit, text, 256);
-                    // Convert wide string to narrow string
-                    std::wstring wideText(text);
-                    std::string narrowText(wideText.begin(), wideText.end());
-                    std::string speechText = "speech_text:" + narrowText;
-                    m_filterCallback(speechText);
+                    // Convert wide string to narrow string using proper conversion
+                    int len = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+                    if (len > 0) {
+                        std::string narrowText(len, 0);
+                        WideCharToMultiByte(CP_UTF8, 0, text, -1, &narrowText[0], len, nullptr, nullptr);
+                        narrowText.resize(len - 1); // Remove null terminator
+                        std::string speechText = "speech_text:" + narrowText;
+                        m_filterCallback(speechText);
+                    }
                 }
+            }
+            break;
+
+        case 1006: // Segmentation method combo box
+            if (code == CBN_SELCHANGE && m_filterCallback) {
+                int selection = SendMessageW(m_segmentationMethodComboBox, CB_GETCURSEL, 0, 0);
+                std::string methodName;
+                switch (selection) {
+                    case 0: methodName = "segmentation_method:motion"; break;
+                    case 1: methodName = "segmentation_method:onnx"; break;
+                    case 2: methodName = "segmentation_method:opencv_dnn"; break;
+                    default: methodName = "segmentation_method:motion"; break;
+                }
+                std::cout << "[PreviewWindowManager] Segmentation method changed: " << methodName << std::endl;
+                m_filterCallback(methodName);
+            }
+            break;
+
+        case 1007: // GPU acceleration combo box
+            if (code == CBN_SELCHANGE && m_filterCallback) {
+                int selection = SendMessageW(m_gpuAccelerationComboBox, CB_GETCURSEL, 0, 0);
+                std::string gpuCmd = (selection == 1) ? "gpu_acceleration:on" : "gpu_acceleration:off";
+                std::cout << "[PreviewWindowManager] GPU acceleration changed: " << gpuCmd << std::endl;
+                m_filterCallback(gpuCmd);
             }
             break;
     }

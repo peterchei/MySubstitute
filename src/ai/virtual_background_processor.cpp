@@ -19,7 +19,7 @@ VirtualBackgroundProcessor::VirtualBackgroundProcessor()
       m_solidColor(200, 200, 200),
       m_bgSubtractorInitialized(false),
       m_stableFrameCount(0),
-      m_segmentationMethod(METHOD_OPENCV_DNN),  // Default fallback method
+      m_segmentationMethod(METHOD_ONNX_SELFIE),  // Default fallback method
       m_useGPU(true),  // Enable GPU by default
       m_useGuidedFilter(true),
       m_backend("CPU")
