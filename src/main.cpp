@@ -382,13 +382,33 @@ Frame GetLatestProcessedFrame();  // Callback for preview window
 void OnCameraFrame(const Frame& frame);  // Camera frame callback
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    // Check for test command line argument
-    if (lpCmdLine && strstr(lpCmdLine, "--test-virtual-camera")) {
-        // Test mode - run virtual camera registration test
+    // Check for debug mode command line argument
+    bool debugMode = (lpCmdLine && (strstr(lpCmdLine, "--debug") || strstr(lpCmdLine, "-d")));
+    
+    if (debugMode) {
+        // Debug mode - show console window for log messages
         AllocConsole();
         freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
         freopen_s((FILE**)stderr, "CONOUT$", "w", stderr);
         freopen_s((FILE**)stdin, "CONIN$", "r", stdin);
+        
+        std::cout << "=====================================" << std::endl;
+        std::cout << "  MySubstitute - DEBUG MODE" << std::endl;
+        std::cout << "=====================================" << std::endl;
+        std::cout << "Console logging enabled." << std::endl;
+        std::cout << "All debug messages will appear here." << std::endl;
+        std::cout << std::endl;
+    }
+    
+    // Check for test command line argument
+    if (lpCmdLine && strstr(lpCmdLine, "--test-virtual-camera")) {
+        // Test mode - run virtual camera registration test
+        if (!debugMode) {
+            AllocConsole();
+            freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
+            freopen_s((FILE**)stderr, "CONOUT$", "w", stderr);
+            freopen_s((FILE**)stdin, "CONIN$", "r", stdin);
+        }
         
         std::wcout << L"🧪 MySubstitute Virtual Camera Test Mode" << std::endl;
         std::wcout << L"=======================================" << std::endl;
