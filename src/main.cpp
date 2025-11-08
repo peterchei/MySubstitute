@@ -850,9 +850,10 @@ void ShowStatusMessage() {
 Frame GetLatestProcessedFrame() {
     std::lock_guard<std::mutex> lock(g_frameMutex);
     
-    // Return processed camera frame if available, otherwise use test frame
+    // Return DEEP COPY of processed camera frame to avoid flickering
+    // Shallow copy causes race condition where preview reads frame while it's being updated
     if (g_lastProcessedFrame.IsValid()) {
-        return g_lastProcessedFrame;
+        return g_lastProcessedFrame.Clone();  // Use Clone() for deep copy
     }
     
     // Fallback to test frame if no camera data available
@@ -910,11 +911,11 @@ void OnCameraFrame(const Frame& frame) {
         frameCount++;
     }
     
-    // Store both original and processed frames
+    // Store both original and processed frames with DEEP COPY to prevent flickering
     {
         std::lock_guard<std::mutex> lock(g_frameMutex);
-        g_lastCameraFrame = frame;
-        g_lastProcessedFrame = processedFrame;
+        g_lastCameraFrame = frame.Clone();           // Deep copy of original
+        g_lastProcessedFrame = processedFrame.Clone(); // Deep copy of processed
     }
     
     // Send processed frame to virtual camera (legacy)
