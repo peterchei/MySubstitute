@@ -284,10 +284,10 @@ cv::Mat VirtualBackgroundProcessor::DetectPersonUsingMotionAndFace(const cv::Mat
     // Step 5: Face detection to refine or fallback
     cv::CascadeClassifier faceCascade;
     std::vector<std::string> possiblePaths = {
+        "D:/DevTools/opencv/build/etc/haarcascades/haarcascade_frontalface_default.xml",
         "C:/opencv/build/etc/haarcascades/haarcascade_frontalface_default.xml",
         "haarcascade_frontalface_default.xml",
         "C:/opencv/sources/data/haarcascades/haarcascade_frontalface_default.xml",
-        "D:/DevTools/opencv/build/etc/haarcascades/haarcascade_frontalface_default.xml",
         "data/haarcascades/haarcascade_frontalface_default.xml"
     };
     
@@ -952,10 +952,38 @@ void VirtualBackgroundProcessor::TemporalSmoothing(cv::Mat& mask)
 
 void VirtualBackgroundProcessor::SetSegmentationMethod(SegmentationMethod method)
 {
+    std::string methodName = (method == METHOD_ONNX_SELFIE ? "ONNX (MediaPipe)" : 
+                              method == METHOD_OPENCV_DNN ? "OpenCV DNN" : "Motion+Face");
+    
+    std::cout << "[VirtualBackgroundProcessor] Segmentation method changed to: " << methodName << std::endl;
+    
+    // Check if the requested method is available
+    if (method == METHOD_OPENCV_DNN) {
+        if (!m_modelLoaded || m_segmentationNet.empty()) {
+            std::cout << "[VirtualBackgroundProcessor] ⚠️  OpenCV DNN model not loaded!" << std::endl;
+            std::cout << "[VirtualBackgroundProcessor]    Falling back to Motion+Face detection" << std::endl;
+            std::cout << "[VirtualBackgroundProcessor] 💡 To use OpenCV DNN, download DeepLab model:" << std::endl;
+            std::cout << "[VirtualBackgroundProcessor]    1. Download: deeplabv3_mnv2_pascal_train_aug.pb" << std::endl;
+            std::cout << "[VirtualBackgroundProcessor]    2. Place in: models/ folder" << std::endl;
+            std::cout << "[VirtualBackgroundProcessor]    3. Restart application" << std::endl;
+        } else {
+            std::cout << "[VirtualBackgroundProcessor] ✅ OpenCV DNN ready" << std::endl;
+        }
+    }
+    
+#ifdef HAVE_ONNX
+    if (method == METHOD_ONNX_SELFIE) {
+        if (!m_modelLoaded) {
+            std::cout << "[VirtualBackgroundProcessor] ⚠️  ONNX model not loaded!" << std::endl;
+            std::cout << "[VirtualBackgroundProcessor]    Falling back to Motion+Face detection" << std::endl;
+            std::cout << "[VirtualBackgroundProcessor] 💡 To use ONNX, run: .\\scripts\\download_segmentation_model.ps1" << std::endl;
+        } else {
+            std::cout << "[VirtualBackgroundProcessor] ✅ ONNX (MediaPipe) ready with " << m_backend << std::endl;
+        }
+    }
+#endif
+    
     m_segmentationMethod = method;
-    std::cout << "[VirtualBackgroundProcessor] Segmentation method changed to: " 
-              << (method == METHOD_ONNX_SELFIE ? "ONNX" : method == METHOD_OPENCV_DNN ? "OpenCV DNN" : "Motion+Face") 
-              << std::endl;
 }
 
 void VirtualBackgroundProcessor::SetUseGPU(bool useGPU)
