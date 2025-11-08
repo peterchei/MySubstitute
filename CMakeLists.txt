@@ -26,6 +26,49 @@ else()
     set(HAVE_OPENCV TRUE)
 endif()
 
+# Optional: ONNX Runtime for better person segmentation
+option(USE_ONNX "Use ONNX Runtime for person segmentation" OFF)
+
+if(USE_ONNX)
+    message(STATUS "Searching for ONNX Runtime...")
+    
+    find_path(ONNX_INCLUDE_DIR 
+        NAMES onnxruntime_cxx_api.h
+        PATHS
+            "C:/Dev/onnxruntime/include"
+            "C:/Program Files/onnxruntime/include"
+            "$ENV{ONNX_ROOT}/include"
+            "$ENV{ProgramFiles}/onnxruntime/include"
+    )
+    
+    find_library(ONNX_LIBRARY 
+        NAMES onnxruntime
+        PATHS
+            "C:/Dev/onnxruntime/lib"
+            "C:/Program Files/onnxruntime/lib"
+            "$ENV{ONNX_ROOT}/lib"
+            "$ENV{ProgramFiles}/onnxruntime/lib"
+    )
+    
+    if(ONNX_INCLUDE_DIR AND ONNX_LIBRARY)
+        message(STATUS "✅ Found ONNX Runtime")
+        message(STATUS "   Include: ${ONNX_INCLUDE_DIR}")
+        message(STATUS "   Library: ${ONNX_LIBRARY}")
+        set(HAVE_ONNX TRUE)
+        add_definitions(-DHAVE_ONNX)
+        include_directories(${ONNX_INCLUDE_DIR})
+    else()
+        message(WARNING "⚠️  ONNX Runtime not found. Virtual background will use fallback methods.")
+        message(STATUS "To enable ONNX:")
+        message(STATUS "  1. Download from: https://github.com/microsoft/onnxruntime/releases")
+        message(STATUS "  2. Extract to C:/Dev/onnxruntime")
+        message(STATUS "  3. Re-run cmake with -DUSE_ONNX=ON")
+        set(HAVE_ONNX FALSE)
+    endif()
+else()
+    set(HAVE_ONNX FALSE)
+endif()
+
 # Include directories
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 if(HAVE_OPENCV)
@@ -88,6 +131,28 @@ if(HAVE_OPENCV)
     target_link_libraries(MySubstitute ${OpenCV_LIBS})
 else()
     target_compile_definitions(MySubstitute PRIVATE HAVE_OPENCV=0)
+endif()
+
+# Add ONNX Runtime if available
+if(HAVE_ONNX)
+    target_link_libraries(MySubstitute ${ONNX_LIBRARY})
+    
+    # Copy ONNX DLLs to output directory on Windows
+    if(WIN32)
+        get_filename_component(ONNX_DLL_DIR "${ONNX_LIBRARY}" DIRECTORY)
+        file(GLOB ONNX_DLLS "${ONNX_DLL_DIR}/*.dll")
+        
+        if(ONNX_DLLS)
+            message(STATUS "Will copy ONNX DLLs from: ${ONNX_DLL_DIR}")
+            foreach(DLL ${ONNX_DLLS})
+                add_custom_command(TARGET MySubstitute POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${DLL}" $<TARGET_FILE_DIR:MySubstitute>
+                    COMMENT "Copying ONNX DLL: ${DLL}"
+                )
+            endforeach()
+        endif()
+    endif()
 endif()
 
 # Link Windows libraries

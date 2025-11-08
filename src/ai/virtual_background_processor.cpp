@@ -18,7 +18,11 @@ VirtualBackgroundProcessor::VirtualBackgroundProcessor()
       m_cachedHeight(0),
       m_solidColor(200, 200, 200),
       m_bgSubtractorInitialized(false),
-      m_stableFrameCount(0)
+      m_stableFrameCount(0),
+      m_segmentationMethod(METHOD_OPENCV_DNN),  // Default fallback method
+      m_useGPU(true),  // Enable GPU by default
+      m_useGuidedFilter(true),
+      m_backend("CPU")
 {
     std::cout << "[VirtualBackgroundProcessor] Initializing..." << std::endl;
 }
@@ -34,36 +38,64 @@ bool VirtualBackgroundProcessor::Initialize()
 
 #ifdef HAVE_OPENCV
     try {
-        // Load semantic segmentation model (U-Net or DeepLab style)
-        // Using OpenCV's built-in person segmentation via MobileNetV2
-        std::string modelPath = "models/deeplabv3_mnv2_pascal_train_aug.pb";
-        std::string configPath = "models/deeplabv3_mnv2_pascal_train_aug.pbtxt";
-        
-        // Try to load the model if available
-        if (std::ifstream(modelPath).good()) {
-            std::cout << "[VirtualBackgroundProcessor] Loading semantic segmentation model..." << std::endl;
-            m_segmentationNet = cv::dnn::readNetFromTensorflow(modelPath, configPath);
+        // Try to load best available segmentation model
+        std::vector<std::pair<std::string, std::string>> modelPaths = {
+            // MediaPipe Selfie Segmentation (256x256) - BEST for real-time
+            {"models/selfie_segmentation.onnx", "ONNX MediaPipe Selfie"},
+            {"models/selfie_segmentation.tflite", "TFLite MediaPipe"},
             
-            if (!m_segmentationNet.empty()) {
-                std::cout << "[VirtualBackgroundProcessor] Segmentation model loaded successfully" << std::endl;
-                m_segmentationNet.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-                m_segmentationNet.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
-                m_modelLoaded = true;
-            } else {
-                std::cout << "[VirtualBackgroundProcessor] Model file exists but failed to load, using simple approach" << std::endl;
-                m_modelLoaded = false;
+            // OpenCV DNN models
+            {"models/segmentation_model_fp16.onnx", "ONNX FP16"},
+            {"models/deeplabv3_mnv2_pascal_train_aug.pb", "DeepLab MobileNetV2"},
+            
+            // BodyPix models
+            {"models/bodypix_mobilenet.onnx", "BodyPix MobileNet"}
+        };
+        
+        bool modelFound = false;
+        for (const auto& [path, name] : modelPaths) {
+            if (std::ifstream(path).good()) {
+                std::cout << "[VirtualBackgroundProcessor] Found model: " << name << std::endl;
+                
+                if (path.find(".onnx") != std::string::npos) {
+#ifdef HAVE_ONNX
+                    if (LoadSegmentationModelONNX(path)) {
+                        m_segmentationMethod = METHOD_ONNX_SELFIE;
+                        m_modelPath = path;
+                        modelFound = true;
+                        std::cout << "[VirtualBackgroundProcessor] ✅ Using ONNX model: " << name << std::endl;
+                        break;
+                    }
+#else
+                    std::cout << "[VirtualBackgroundProcessor] ⚠️  ONNX model found but ONNX Runtime not available" << std::endl;
+#endif
+                } else if (path.find(".pb") != std::string::npos) {
+                    if (LoadSegmentationModelOpenCVDNN(path)) {
+                        m_segmentationMethod = METHOD_OPENCV_DNN;
+                        m_modelPath = path;
+                        modelFound = true;
+                        std::cout << "[VirtualBackgroundProcessor] ✅ Using OpenCV DNN model: " << name << std::endl;
+                        break;
+                    }
+                }
             }
-        } else {
-            std::cout << "[VirtualBackgroundProcessor] Segmentation model not found, using color-based segmentation" << std::endl;
-            m_modelLoaded = false;
         }
         
-        // Don't override background mode here - it should be set by SetBackgroundMode() before Initialize()
+        if (!modelFound) {
+            std::cout << "[VirtualBackgroundProcessor] ⚠️  No segmentation model found, using motion detection fallback" << std::endl;
+            std::cout << "[VirtualBackgroundProcessor] 💡 For better quality, download MediaPipe Selfie Segmentation:" << std::endl;
+            std::cout << "[VirtualBackgroundProcessor]    Run: .\\scripts\\download_segmentation_model.ps1" << std::endl;
+            m_segmentationMethod = METHOD_MOTION;
+        }
         
         std::cout << "[VirtualBackgroundProcessor] Processor initialized successfully" << std::endl;
-        std::cout << "[VirtualBackgroundProcessor] Background Mode: " << (int)m_backgroundMode << std::endl;
-        std::cout << "[VirtualBackgroundProcessor] Segmentation Threshold: " << m_segmentationThreshold << std::endl;
-        std::cout << "[VirtualBackgroundProcessor] Blend Alpha: " << m_blendAlpha << std::endl;
+        std::cout << "[VirtualBackgroundProcessor] Configuration:" << std::endl;
+        std::cout << "[VirtualBackgroundProcessor]   Background Mode: " << (int)m_backgroundMode << std::endl;
+        std::cout << "[VirtualBackgroundProcessor]   Segmentation Method: " << (m_segmentationMethod == METHOD_ONNX_SELFIE ? "ONNX" : m_segmentationMethod == METHOD_OPENCV_DNN ? "OpenCV DNN" : "Motion+Face") << std::endl;
+        std::cout << "[VirtualBackgroundProcessor]   Segmentation Threshold: " << m_segmentationThreshold << std::endl;
+        std::cout << "[VirtualBackgroundProcessor]   Blend Alpha: " << m_blendAlpha << std::endl;
+        std::cout << "[VirtualBackgroundProcessor]   GPU Enabled: " << (m_useGPU ? "YES" : "NO") << std::endl;
+        std::cout << "[VirtualBackgroundProcessor]   Backend: " << m_backend << std::endl;
         
         return true;
     } catch (const std::exception& e) {
@@ -117,51 +149,27 @@ Frame VirtualBackgroundProcessor::ProcessFrame(const Frame& input)
 
 cv::Mat VirtualBackgroundProcessor::SegmentPerson(const cv::Mat& frame)
 {
-    // Create mask where 255 = person (foreground), 0 = background
     cv::Mat mask;
     
-    if (m_modelLoaded && !m_segmentationNet.empty()) {
-        std::cout << "[VirtualBackgroundProcessor::SegmentPerson] Using DNN model" << std::endl;
-        try {
-            // Prepare input blob
-            cv::Mat inputBlob = cv::dnn::blobFromImage(frame, 1.0 / 255.0, cv::Size(513, 513),
-                                                       cv::Scalar(0, 0, 0), false, false);
+    // Use best available method
+    switch (m_segmentationMethod) {
+#ifdef HAVE_ONNX
+        case METHOD_ONNX_SELFIE:
+            mask = SegmentPersonWithONNX(frame);
+            break;
+#endif
+        case METHOD_OPENCV_DNN:
+            if (m_modelLoaded && !m_segmentationNet.empty()) {
+                mask = SegmentPersonWithOpenCVDNN(frame);
+            } else {
+                mask = DetectPersonUsingMotionAndFace(frame);
+            }
+            break;
             
-            m_segmentationNet.setInput(inputBlob);
-            
-            // Get output (semantic segmentation map)
-            cv::Mat output = m_segmentationNet.forward();
-            
-            // Extract person class (usually class 15 in Pascal VOC)
-            // Output shape is [1, numClasses, H, W]
-            int numClasses = output.size[1];
-            int height = output.size[2];
-            int width = output.size[3];
-            
-            // Get person channel and resize back to frame size
-            cv::Mat personMap(height, width, CV_32F, output.ptr<float>(0) + 15 * height * width);
-            cv::Mat personMaskSmall;
-            cv::threshold(personMap, personMaskSmall, m_segmentationThreshold, 255, cv::THRESH_BINARY);
-            personMaskSmall.convertTo(personMaskSmall, CV_8U);
-            
-            // Resize mask to frame size
-            cv::resize(personMaskSmall, mask, frame.size());
-            
-            // Apply morphological operations to clean up mask
-            cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
-            cv::morphologyEx(mask, mask, cv::MORPH_CLOSE, kernel);
-            cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel);
-            
-            std::cout << "[VirtualBackgroundProcessor::SegmentPerson] DNN segmentation complete" << std::endl;
-            
-        } catch (const std::exception& e) {
-            std::cerr << "[VirtualBackgroundProcessor] Segmentation error: " << e.what() << std::endl;
-            // Fall through to advanced fallback
-            mask = cv::Mat::zeros(frame.size(), CV_8U);
-        }
-    } else {
-        // Use combination of methods for better segmentation
-        mask = DetectPersonUsingMotionAndFace(frame);
+        case METHOD_MOTION:
+        default:
+            mask = DetectPersonUsingMotionAndFace(frame);
+            break;
     }
     
     return mask;
@@ -649,6 +657,374 @@ bool VirtualBackgroundProcessor::LoadBackgroundImage(const std::string& imagePat
     return true;
 }
 
+// New segmentation methods for improved quality
+
+#ifdef HAVE_ONNX
+bool VirtualBackgroundProcessor::LoadSegmentationModelONNX(const std::string& modelPath)
+{
+    try {
+        // Initialize ONNX Runtime
+        m_onnxEnv = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, "VirtualBackground");
+        m_sessionOptions = std::make_unique<Ort::SessionOptions>();
+        
+        // Enable GPU if available
+        if (m_useGPU) {
+            try {
+                // Try CUDA first
+                #ifdef USE_CUDA
+                OrtCUDAProviderOptions cuda_options;
+                m_sessionOptions->AppendExecutionProvider_CUDA(cuda_options);
+                m_backend = "CUDA";
+                std::cout << "[VirtualBackgroundProcessor] GPU acceleration enabled (CUDA)" << std::endl;
+                #elif defined(USE_DIRECTML)
+                m_sessionOptions->AppendExecutionProvider_DML(0);
+                m_backend = "DirectML";
+                std::cout << "[VirtualBackgroundProcessor] GPU acceleration enabled (DirectML)" << std::endl;
+                #else
+                m_backend = "CPU";
+                std::cout << "[VirtualBackgroundProcessor] GPU requested but no provider available, using CPU" << std::endl;
+                #endif
+            } catch (...) {
+                m_backend = "CPU";
+                std::cout << "[VirtualBackgroundProcessor] GPU initialization failed, using CPU" << std::endl;
+            }
+        } else {
+            m_backend = "CPU";
+        }
+        
+        // Set optimization level
+        m_sessionOptions->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+        m_sessionOptions->SetIntraOpNumThreads(4);
+        
+        // Load model
+        #ifdef _WIN32
+        std::wstring wModelPath(modelPath.begin(), modelPath.end());
+        m_onnxSession = std::make_unique<Ort::Session>(*m_onnxEnv, wModelPath.c_str(), *m_sessionOptions);
+        #else
+        m_onnxSession = std::make_unique<Ort::Session>(*m_onnxEnv, modelPath.c_str(), *m_sessionOptions);
+        #endif
+        
+        m_modelLoaded = true;
+        std::cout << "[VirtualBackgroundProcessor] ONNX model loaded successfully" << std::endl;
+        std::cout << "[VirtualBackgroundProcessor] Backend: " << m_backend << std::endl;
+        
+        return true;
+        
+    } catch (const Ort::Exception& e) {
+        std::cerr << "[VirtualBackgroundProcessor] ONNX error: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+cv::Mat VirtualBackgroundProcessor::SegmentPersonWithONNX(const cv::Mat& frame)
+{
+    if (!m_onnxSession) {
+        return DetectPersonUsingMotionAndFace(frame);
+    }
+    
+    try {
+        // MediaPipe Selfie Segmentation expects 256x256 input
+        const int inputSize = 256;
+        cv::Mat resized;
+        cv::resize(frame, resized, cv::Size(inputSize, inputSize));
+        
+        // Convert to RGB and normalize to [0, 1]
+        cv::Mat rgb;
+        cv::cvtColor(resized, rgb, cv::COLOR_BGR2RGB);
+        rgb.convertTo(rgb, CV_32F, 1.0 / 255.0);
+        
+        // Prepare input tensor [1, 3, 256, 256]
+        std::vector<float> inputTensorValues(1 * 3 * inputSize * inputSize);
+        
+        // Convert HWC to CHW format
+        for (int c = 0; c < 3; ++c) {
+            for (int h = 0; h < inputSize; ++h) {
+                for (int w = 0; w < inputSize; ++w) {
+                    inputTensorValues[c * inputSize * inputSize + h * inputSize + w] = 
+                        rgb.at<cv::Vec3f>(h, w)[c];
+                }
+            }
+        }
+        
+        // Create input tensor
+        std::vector<int64_t> inputShape = {1, 3, inputSize, inputSize};
+        auto memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
+            memoryInfo, inputTensorValues.data(), inputTensorValues.size(),
+            inputShape.data(), inputShape.size()
+        );
+        
+        // Run inference
+        const char* inputNames[] = {"input_1"};  // MediaPipe input name
+        const char* outputNames[] = {"output_1"};  // MediaPipe output name
+        
+        auto outputTensors = m_onnxSession->Run(
+            Ort::RunOptions{nullptr},
+            inputNames, &inputTensor, 1,
+            outputNames, 1
+        );
+        
+        // Get output [1, 1, 256, 256] or [1, 256, 256, 1]
+        float* outputData = outputTensors[0].GetTensorMutableData<float>();
+        auto tensorInfo = outputTensors[0].GetTensorTypeAndShapeInfo();
+        auto shape = tensorInfo.GetShape();
+        
+        // Convert to OpenCV Mat
+        cv::Mat maskSmall(inputSize, inputSize, CV_32F, outputData);
+        
+        // Resize back to original frame size
+        cv::Mat mask;
+        cv::resize(maskSmall, mask, frame.size(), 0, 0, cv::INTER_LINEAR);
+        
+        // Convert to 8-bit [0, 255]
+        mask.convertTo(mask, CV_8U, 255.0);
+        
+        // Post-process for better quality
+        return PostProcessMask(mask, frame);
+        
+    } catch (const Ort::Exception& e) {
+        std::cerr << "[VirtualBackgroundProcessor] ONNX inference error: " << e.what() << std::endl;
+        return DetectPersonUsingMotionAndFace(frame);
+    } catch (const std::exception& e) {
+        std::cerr << "[VirtualBackgroundProcessor] Error in ONNX segmentation: " << e.what() << std::endl;
+        return DetectPersonUsingMotionAndFace(frame);
+    }
+}
+#endif // HAVE_ONNX
+
+bool VirtualBackgroundProcessor::LoadSegmentationModelOpenCVDNN(const std::string& modelPath)
+{
+    try {
+        std::string configPath = modelPath;
+        size_t pos = configPath.rfind(".pb");
+        if (pos != std::string::npos) {
+            configPath.replace(pos, 3, ".pbtxt");
+        }
+        
+        m_segmentationNet = cv::dnn::readNetFromTensorflow(modelPath, configPath);
+        
+        if (m_segmentationNet.empty()) {
+            return false;
+        }
+        
+        // Try to use GPU
+        if (m_useGPU) {
+            try {
+                m_segmentationNet.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+                m_segmentationNet.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA_FP16);
+                m_backend = "CUDA FP16";
+                std::cout << "[VirtualBackgroundProcessor] GPU acceleration enabled (OpenCV CUDA)" << std::endl;
+            } catch (...) {
+                m_segmentationNet.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+                m_segmentationNet.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+                m_backend = "CPU";
+                std::cout << "[VirtualBackgroundProcessor] CUDA not available, using CPU" << std::endl;
+            }
+        } else {
+            m_segmentationNet.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+            m_segmentationNet.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+            m_backend = "CPU";
+        }
+        
+        m_modelLoaded = true;
+        std::cout << "[VirtualBackgroundProcessor] OpenCV DNN model loaded successfully" << std::endl;
+        std::cout << "[VirtualBackgroundProcessor] Backend: " << m_backend << std::endl;
+        
+        return true;
+        
+    } catch (const cv::Exception& e) {
+        std::cerr << "[VirtualBackgroundProcessor] OpenCV DNN error: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+cv::Mat VirtualBackgroundProcessor::SegmentPersonWithOpenCVDNN(const cv::Mat& frame)
+{
+    if (m_segmentationNet.empty()) {
+        return DetectPersonUsingMotionAndFace(frame);
+    }
+    
+    try {
+        // Prepare input blob (DeepLab expects 513x513)
+        cv::Mat inputBlob = cv::dnn::blobFromImage(
+            frame, 1.0 / 255.0, cv::Size(513, 513),
+            cv::Scalar(0, 0, 0), false, false
+        );
+        
+        m_segmentationNet.setInput(inputBlob);
+        cv::Mat output = m_segmentationNet.forward();
+        
+        // Extract person class (class 15 in Pascal VOC)
+        int numClasses = output.size[1];
+        int height = output.size[2];
+        int width = output.size[3];
+        
+        cv::Mat personMap(height, width, CV_32F, output.ptr<float>(0) + 15 * height * width);
+        
+        // Threshold and resize
+        cv::Mat maskSmall;
+        cv::threshold(personMap, maskSmall, m_segmentationThreshold, 255, cv::THRESH_BINARY);
+        maskSmall.convertTo(maskSmall, CV_8U);
+        
+        cv::Mat mask;
+        cv::resize(maskSmall, mask, frame.size(), 0, 0, cv::INTER_LINEAR);
+        
+        return PostProcessMask(mask, frame);
+        
+    } catch (const cv::Exception& e) {
+        std::cerr << "[VirtualBackgroundProcessor] DNN inference error: " << e.what() << std::endl;
+        return DetectPersonUsingMotionAndFace(frame);
+    }
+}
+
+cv::Mat VirtualBackgroundProcessor::PostProcessMask(const cv::Mat& rawMask, const cv::Mat& frame)
+{
+    cv::Mat mask = rawMask.clone();
+    
+    // 1. Morphological operations to clean up mask
+    cv::Mat kernel3 = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));
+    cv::Mat kernel5 = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+    
+    // Remove small noise
+    cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel3, cv::Point(-1, -1), 1);
+    // Fill small holes
+    cv::morphologyEx(mask, mask, cv::MORPH_CLOSE, kernel5, cv::Point(-1, -1), 2);
+    
+    // 2. Edge refinement using guided filter or bilateral filter
+    EdgeRefinement(mask, frame);
+    
+    // 3. Temporal smoothing to reduce flickering
+    TemporalSmoothing(mask);
+    
+    // 4. Final soft edge with Gaussian blur
+    cv::GaussianBlur(mask, mask, cv::Size(9, 9), 0);
+    
+    return mask;
+}
+
+void VirtualBackgroundProcessor::EdgeRefinement(cv::Mat& mask, const cv::Mat& frame)
+{
+    if (!m_useGuidedFilter) {
+        return;
+    }
+    
+    // Use bilateral filter for edge-aware smoothing
+    cv::Mat refined;
+    cv::bilateralFilter(mask, refined, 9, 75, 75);
+    refined.copyTo(mask);
+    
+    // Optional: Use guided filter if available (better quality but slower)
+    // This would require opencv_contrib ximgproc module:
+    // #ifdef HAVE_OPENCV_XIMGPROC
+    // cv::ximgproc::guidedFilter(frame, mask, mask, 8, 0.1);
+    // #endif
+}
+
+void VirtualBackgroundProcessor::TemporalSmoothing(cv::Mat& mask)
+{
+    // Add current mask to history
+    m_maskHistory.push_back(mask.clone());
+    
+    // Keep only last N masks
+    if (m_maskHistory.size() > MAX_MASK_HISTORY) {
+        m_maskHistory.pop_front();
+    }
+    
+    // If we have enough history, do temporal averaging
+    if (m_maskHistory.size() >= 3) {
+        cv::Mat avgMask = cv::Mat::zeros(mask.size(), CV_32F);
+        
+        // Weighted average (more recent frames have more weight)
+        float totalWeight = 0.0f;
+        for (size_t i = 0; i < m_maskHistory.size(); ++i) {
+            float weight = static_cast<float>(i + 1) / m_maskHistory.size();  // 0.2, 0.4, 0.6, 0.8, 1.0
+            
+            cv::Mat maskFloat;
+            m_maskHistory[i].convertTo(maskFloat, CV_32F);
+            avgMask += maskFloat * weight;
+            totalWeight += weight;
+        }
+        
+        avgMask /= totalWeight;
+        avgMask.convertTo(mask, CV_8U);
+    }
+}
+
+void VirtualBackgroundProcessor::SetSegmentationMethod(SegmentationMethod method)
+{
+    m_segmentationMethod = method;
+    std::cout << "[VirtualBackgroundProcessor] Segmentation method changed to: " 
+              << (method == METHOD_ONNX_SELFIE ? "ONNX" : method == METHOD_OPENCV_DNN ? "OpenCV DNN" : "Motion+Face") 
+              << std::endl;
+}
+
+void VirtualBackgroundProcessor::SetUseGPU(bool useGPU)
+{
+    m_useGPU = useGPU;
+    std::cout << "[VirtualBackgroundProcessor] GPU usage " << (useGPU ? "enabled" : "disabled") << std::endl;
+    
+    // If model is already loaded, may need to reinitialize
+    if (m_modelLoaded) {
+        std::cout << "[VirtualBackgroundProcessor] ⚠️  GPU setting changed. Reinitialize processor for changes to take effect." << std::endl;
+    }
+}
+
+bool VirtualBackgroundProcessor::LoadSegmentationModel(const std::string& modelPath)
+{
+    m_modelPath = modelPath;
+    
+    if (modelPath.find(".onnx") != std::string::npos) {
+#ifdef HAVE_ONNX
+        return LoadSegmentationModelONNX(modelPath);
+#else
+        std::cerr << "[VirtualBackgroundProcessor] ONNX model specified but ONNX Runtime not available" << std::endl;
+        return false;
+#endif
+    } else if (modelPath.find(".pb") != std::string::npos) {
+        return LoadSegmentationModelOpenCVDNN(modelPath);
+    } else {
+        std::cerr << "[VirtualBackgroundProcessor] Unsupported model format: " << modelPath << std::endl;
+        return false;
+    }
+}
+
+std::string VirtualBackgroundProcessor::GetSegmentationInfo() const
+{
+    std::string info;
+    info += "Segmentation Method: ";
+    
+    switch (m_segmentationMethod) {
+        case METHOD_ONNX_SELFIE:
+            info += "ONNX (MediaPipe Selfie Segmentation)\n";
+            break;
+        case METHOD_OPENCV_DNN:
+            info += "OpenCV DNN (DeepLab/BodyPix)\n";
+            break;
+        case METHOD_MOTION:
+            info += "Motion + Face Detection (Fallback)\n";
+            break;
+    }
+    
+    info += "Backend: " + m_backend + "\n";
+    info += "GPU Enabled: " + std::string(m_useGPU ? "Yes" : "No") + "\n";
+    info += "Model Loaded: " + std::string(m_modelLoaded ? "Yes" : "No") + "\n";
+    
+    if (m_modelLoaded) {
+        info += "Model Path: " + m_modelPath + "\n";
+    }
+    
+    info += "Temporal Smoothing: Enabled (" + std::to_string(m_maskHistory.size()) + " frame history)\n";
+    info += "Edge Refinement: " + std::string(m_useGuidedFilter ? "Enabled" : "Disabled") + "\n";
+    
+    if (m_frameCounter > 0) {
+        info += "Performance: " + std::to_string(m_processingTime) + " ms/frame\n";
+        float fps = (m_processingTime > 0) ? (1000.0f / m_processingTime) : 0.0f;
+        info += "FPS: " + std::to_string(fps) + "\n";
+    }
+    
+    return info;
+}
+
 #endif
 
 std::string VirtualBackgroundProcessor::GetName() const
@@ -831,3 +1207,4 @@ cv::Mat VirtualBackgroundProcessor::CreateMinecraftPixelBackground(const cv::Mat
     
     return pixelated;
 }
+
