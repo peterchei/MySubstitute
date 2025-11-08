@@ -141,6 +141,10 @@ private:
     BITMAPINFO m_bitmapInfo;
     void* m_bitmapData;
     
+    // Frame caching to prevent flickering
+    std::vector<unsigned char> m_cachedFrameData;  // Cache the last rendered frame
+    bool m_hasValidCache;
+    
     // Window properties
     std::wstring m_title;
     int m_refreshRate;  // FPS

@@ -12,7 +12,7 @@ PreviewWindowManager::PreviewWindowManager()
     , m_oldBitmap(nullptr)
     , m_bitmapData(nullptr)
     , m_title(L"MySubstitute - Live Preview")
-    , m_refreshRate(30)
+    , m_refreshRate(15)  // Reduced from 30 to 15 FPS for smoother preview
     , m_alwaysOnTop(false)
     , m_width(DEFAULT_WIDTH)
     , m_height(DEFAULT_HEIGHT)
@@ -23,6 +23,7 @@ PreviewWindowManager::PreviewWindowManager()
     , m_speechBubbleEdit(nullptr)
     , m_segmentationMethodComboBox(nullptr)
     , m_gpuAccelerationComboBox(nullptr)
+    , m_hasValidCache(false)
 {
     ZeroMemory(&m_bitmapInfo, sizeof(m_bitmapInfo));
 }
@@ -580,11 +581,18 @@ void PreviewWindowManager::RenderFrame() {
     try {
         Frame frame = m_frameCallback();
         if (!frame.IsValid()) {
-            // Fill with black if no frame available - calculate proper stride
-            int stride = ((m_width * 3 + 3) & ~3); // 4-byte alignment
-            unsigned char* pixels = (unsigned char*)m_bitmapData;
-            for (int y = 0; y < m_height; ++y) {
-                memset(pixels + y * stride, 0, m_width * 3);
+            // Use cached frame if available, otherwise fill with black
+            if (m_hasValidCache && !m_cachedFrameData.empty()) {
+                // Restore from cache
+                int stride = ((m_width * 3 + 3) & ~3);
+                memcpy(m_bitmapData, m_cachedFrameData.data(), m_cachedFrameData.size());
+            } else {
+                // Fill with black if no frame available
+                int stride = ((m_width * 3 + 3) & ~3);
+                unsigned char* pixels = (unsigned char*)m_bitmapData;
+                for (int y = 0; y < m_height; ++y) {
+                    memset(pixels + y * stride, 0, m_width * 3);
+                }
             }
             return;
         }
@@ -596,6 +604,7 @@ void PreviewWindowManager::RenderFrame() {
         // Handle different input formats
         if (frame.data.channels() == 3) {
             // OpenCV uses BGR, Windows DIB expects BGR - no conversion needed
+            // Make a deep copy to avoid race conditions
             frame.data.copyTo(displayFrame);
         } else if (frame.data.channels() == 1) {
             // Convert grayscale to BGR
@@ -623,34 +632,50 @@ void PreviewWindowManager::RenderFrame() {
         unsigned char* srcData = displayFrame.data;
         unsigned char* dstData = (unsigned char*)m_bitmapData;
         
+        // Prepare cache buffer if needed
+        size_t cacheSize = dstStride * m_height;
+        if (m_cachedFrameData.size() != cacheSize) {
+            m_cachedFrameData.resize(cacheSize);
+        }
+        
+        // Copy to both bitmap and cache atomically
         for (int y = 0; y < m_height; ++y) {
-            // Copy row by row to handle stride differences
             memcpy(dstData + y * dstStride, srcData + y * srcStride, m_width * 3);
         }
+        
+        // Update cache from bitmap data
+        memcpy(m_cachedFrameData.data(), dstData, cacheSize);
+        m_hasValidCache = true;
+        
 #else
         // Fallback: Fill with a pattern if OpenCV is not available
         unsigned char* pixels = (unsigned char*)m_bitmapData;
+        int stride = ((m_width * 3 + 3) & ~3);
         for (int y = 0; y < m_height; ++y) {
+            unsigned char* row = pixels + y * stride;
             for (int x = 0; x < m_width; ++x) {
-                int idx = (y * m_width + x) * 3;
-                pixels[idx] = 64;      // R
-                pixels[idx + 1] = 128; // G  
-                pixels[idx + 2] = 192; // B
+                row[x * 3] = 64;      // R
+                row[x * 3 + 1] = 128; // G  
+                row[x * 3 + 2] = 192; // B
             }
         }
 #endif
     } catch (const std::exception& e) {
-        // Fill with error color (red) on exception - handle stride properly
+        // On error, use cached frame if available
         std::wcerr << L"RenderFrame exception: " << e.what() << std::endl;
-        int stride = ((m_width * 3 + 3) & ~3);
-        unsigned char* pixels = (unsigned char*)m_bitmapData;
-        
-        for (int y = 0; y < m_height; ++y) {
-            unsigned char* row = pixels + y * stride;
-            for (int x = 0; x < m_width; ++x) {
-                row[x * 3] = 255;     // R - Red error color
-                row[x * 3 + 1] = 0;   // G
-                row[x * 3 + 2] = 0;   // B
+        if (m_hasValidCache && !m_cachedFrameData.empty()) {
+            memcpy(m_bitmapData, m_cachedFrameData.data(), m_cachedFrameData.size());
+        } else {
+            // Fill with error color (red) on exception
+            int stride = ((m_width * 3 + 3) & ~3);
+            unsigned char* pixels = (unsigned char*)m_bitmapData;
+            for (int y = 0; y < m_height; ++y) {
+                unsigned char* row = pixels + y * stride;
+                for (int x = 0; x < m_width; ++x) {
+                    row[x * 3] = 0;       // B
+                    row[x * 3 + 1] = 0;   // G
+                    row[x * 3 + 2] = 255; // R - Red error color
+                }
             }
         }
     }
