@@ -195,8 +195,23 @@ cat scripts\README.md
 ✅ Main README updated with new links
 ✅ Documentation index created
 ✅ Scripts index created
-✅ Build system still works
+✅ CMakeLists.txt updated to reference scripts/ folder
+✅ Build system still works (all executables compile)
 ✅ All paths validated
+
+### Build System Updates
+
+The following files were updated to work with the new structure:
+
+**CMakeLists.txt** - Updated test executable paths:
+- `test_face_filter.cpp` → `scripts/test_face_filter.cpp`
+- `test_filter_callback.cpp` → `scripts/test_filter_callback.cpp`
+- `test_anime_gpu.cpp` → `scripts/test_anime_gpu.cpp`
+
+**scripts/test_anime_gpu.cpp** - Fixed include path:
+- Changed: `#include "src/ai/anime_gan_processor.h"`
+- To: `#include "ai/anime_gan_processor.h"`
+- Reason: Include directories are already configured in CMakeLists.txt
 
 ## Next Steps
 

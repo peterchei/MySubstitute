@@ -252,7 +252,7 @@ add_custom_command(TARGET MySubstituteVirtualCameraDLL POST_BUILD
 
 # Test executables
 add_executable(test_face_filter
-    test_face_filter.cpp
+    scripts/test_face_filter.cpp
 )
 
 target_include_directories(test_face_filter PRIVATE
@@ -272,7 +272,7 @@ else()
 endif()
 
 add_executable(test_filter_callback
-    test_filter_callback.cpp
+    scripts/test_filter_callback.cpp
 )
 
 target_include_directories(test_filter_callback PRIVATE
@@ -293,7 +293,7 @@ endif()
 
 # AnimeGAN GPU acceleration test
 add_executable(test_anime_gpu
-    test_anime_gpu.cpp
+    scripts/test_anime_gpu.cpp
 )
 
 target_include_directories(test_anime_gpu PRIVATE

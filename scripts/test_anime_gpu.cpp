@@ -1,7 +1,7 @@
 // Simple test to verify AnimeGAN GPU acceleration
 #include <iostream>
 #include <memory>
-#include "src/ai/anime_gan_processor.h"
+#include "ai/anime_gan_processor.h"
 
 #ifdef HAVE_OPENCV
 #include <opencv2/opencv.hpp>
