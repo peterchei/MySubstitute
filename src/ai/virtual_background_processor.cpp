@@ -931,12 +931,35 @@ cv::Mat VirtualBackgroundProcessor::SegmentPersonWithOpenCVDNN(const cv::Mat& fr
         m_segmentationNet.setInput(inputBlob);
         cv::Mat output = m_segmentationNet.forward();
         
+        // Debug: Print output tensor shape to verify layout
+        static bool shapeDebugPrinted = false;
+        if (!shapeDebugPrinted) {
+            std::cout << "[VirtualBackgroundProcessor] DeepLab output shape: ";
+            for (int i = 0; i < output.dims; i++) {
+                std::cout << output.size[i];
+                if (i < output.dims - 1) std::cout << " x ";
+            }
+            std::cout << std::endl;
+            shapeDebugPrinted = true;
+        }
+        
         // Extract person class (class 15 in Pascal VOC)
+        // Output format is typically [1, numClasses, height, width] (NCHW)
         int numClasses = output.size[1];
         int height = output.size[2];
         int width = output.size[3];
         
-        cv::Mat personMap(height, width, CV_32F, output.ptr<float>(0) + 15 * height * width);
+        // Safely extract class 15 using proper indexing
+        // Create a copy to avoid pointer arithmetic issues
+        cv::Mat personMap(height, width, CV_32F);
+        const float* outputData = output.ptr<float>(0);
+        int classOffset = 15 * height * width;  // Offset for class 15
+        
+        for (int y = 0; y < height; y++) {
+            float* personRow = personMap.ptr<float>(y);
+            const float* outputRow = outputData + classOffset + y * width;
+            std::memcpy(personRow, outputRow, width * sizeof(float));
+        }
         
         // Threshold and resize
         cv::Mat maskSmall;
