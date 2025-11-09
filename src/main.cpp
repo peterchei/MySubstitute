@@ -2,6 +2,7 @@
 #include <objbase.h>
 #include <memory>
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <mutex>
 
@@ -287,6 +288,26 @@ void OnFilterChanged(const std::string& filterName) {
         auto processor = std::make_unique<PersonReplacementProcessor>();
         processor->SetReplacementMode(PersonReplacementProcessor::FACE_SWAP);
         processor->SetBlendStrength(0.9f);
+        
+        // Try to load a default target face image (if exists)
+        std::string defaultTargetFace = "assets/default_face.jpg";
+        
+        // Get current working directory for debugging
+        char cwd[MAX_PATH];
+        GetCurrentDirectoryA(MAX_PATH, cwd);
+        std::cout << "[OnFilterChanged] Current working directory: " << cwd << std::endl;
+        std::cout << "[OnFilterChanged] Looking for face image at: " << defaultTargetFace << std::endl;
+        
+        std::ifstream testFile(defaultTargetFace);
+        if (testFile.good()) {
+            testFile.close();
+            processor->SetTargetPersonImage(defaultTargetFace);
+            std::cout << "[OnFilterChanged] ✓ Using default target face: " << defaultTargetFace << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] ✗ No target face found at: " << defaultTargetFace << std::endl;
+            std::cout << "[OnFilterChanged] Tip: Place a face image at '" << cwd << "\\assets\\default_face.jpg'" << std::endl;
+        }
+        
         g_processor = std::move(processor);
         if (g_processor->Initialize()) {
             std::cout << "[OnFilterChanged] Switched to: Person Replacement (Face Swap)" << std::endl;
@@ -300,6 +321,26 @@ void OnFilterChanged(const std::string& filterName) {
         auto processor = std::make_unique<PersonReplacementProcessor>();
         processor->SetReplacementMode(PersonReplacementProcessor::FULL_BODY_REPLACE);
         processor->SetBlendStrength(0.85f);
+        
+        // Try to load a default target image (if exists)
+        std::string defaultTargetImage = "assets/default_person.jpg";
+        
+        // Get current working directory for debugging
+        char cwd[MAX_PATH];
+        GetCurrentDirectoryA(MAX_PATH, cwd);
+        std::cout << "[OnFilterChanged] Current working directory: " << cwd << std::endl;
+        std::cout << "[OnFilterChanged] Looking for person image at: " << defaultTargetImage << std::endl;
+        
+        std::ifstream testFile(defaultTargetImage);
+        if (testFile.good()) {
+            testFile.close();
+            processor->SetTargetPersonImage(defaultTargetImage);
+            std::cout << "[OnFilterChanged] ✓ Using default target image: " << defaultTargetImage << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] ✗ No target image found at: " << defaultTargetImage << std::endl;
+            std::cout << "[OnFilterChanged] Tip: Place an image at '" << cwd << "\\assets\\default_person.jpg'" << std::endl;
+        }
+        
         g_processor = std::move(processor);
         if (g_processor->Initialize()) {
             std::cout << "[OnFilterChanged] Switched to: Person Replacement (Full Body)" << std::endl;

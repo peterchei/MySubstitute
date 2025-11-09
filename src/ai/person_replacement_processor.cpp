@@ -147,8 +147,11 @@ Frame PersonReplacementProcessor::ProcessFrame(const Frame& input)
                 if (!m_targetPersonImage.empty()) {
                     result = ReplaceFace(frame, m_targetPersonImage);
                 } else {
-                    std::cerr << "No target person image set for face swap!" << std::endl;
+                    // No target image set - just pass through original frame with a message overlay
                     result = frame.clone();
+                    std::string msg = "No target face image set. Place image at assets/default_face.jpg";
+                    cv::putText(result, msg, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 
+                               0.5, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
                 }
                 break;
 
@@ -156,8 +159,11 @@ Frame PersonReplacementProcessor::ProcessFrame(const Frame& input)
                 if (!m_targetPersonImage.empty()) {
                     result = ReplaceFullBody(frame, m_targetPersonImage);
                 } else {
-                    std::cerr << "No target person image set for full body replacement!" << std::endl;
+                    // No target image set - just pass through original frame with a message overlay
                     result = frame.clone();
+                    std::string msg = "No target person image set. Place image at assets/default_person.jpg";
+                    cv::putText(result, msg, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 
+                               0.5, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
                 }
                 break;
 
