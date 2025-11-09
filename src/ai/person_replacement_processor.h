@@ -102,6 +102,9 @@ private:
 
     // Face tracking helper
     float CalculateFaceOverlap(const cv::Rect& rect1, const cv::Rect& rect2);
+    
+    // Rectangle validation helper
+    bool IsValidROI(const cv::Rect& rect, const cv::Mat& image) const;
 
     // Blending and compositing
     cv::Mat SeamlessBlend(const cv::Mat& source, const cv::Mat& target, const cv::Mat& mask);

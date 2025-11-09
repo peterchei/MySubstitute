@@ -734,12 +734,54 @@ cv::Mat VirtualBackgroundProcessor::SegmentPersonWithONNX(const cv::Mat& frame)
     try {
         // MediaPipe Selfie Segmentation expects 256x256 input
         const int inputSize = 256;
-        cv::Mat resized;
-        cv::resize(frame, resized, cv::Size(inputSize, inputSize));
+        
+        // IMPORTANT: Use letterboxing to preserve aspect ratio
+        // Calculate scale to fit frame into 256x256 square with higher precision
+        double scale = std::min(
+            static_cast<double>(inputSize) / frame.cols,
+            static_cast<double>(inputSize) / frame.rows
+        );
+        
+        // Use rounding for better accuracy (not truncation)
+        int scaledWidth = static_cast<int>(std::round(frame.cols * scale));
+        int scaledHeight = static_cast<int>(std::round(frame.rows * scale));
+        
+        // Ensure we don't exceed inputSize due to rounding
+        scaledWidth = std::min(scaledWidth, inputSize);
+        scaledHeight = std::min(scaledHeight, inputSize);
+        
+        // Resize preserving aspect ratio using high-quality interpolation
+        cv::Mat scaled;
+        cv::resize(frame, scaled, cv::Size(scaledWidth, scaledHeight), 0, 0, cv::INTER_AREA);
+        
+        // Create 256x256 canvas and center the scaled image (letterboxing)
+        // CRITICAL: Use integer division for offsets (consistent with crop operation)
+        // If we use rounding here, we must use the SAME offsets when cropping
+        cv::Mat letterboxed = cv::Mat::zeros(inputSize, inputSize, frame.type());
+        int offsetX = (inputSize - scaledWidth) / 2;
+        int offsetY = (inputSize - scaledHeight) / 2;
+        
+        // Debug output (first frame only)
+        static bool debugPrinted = false;
+        if (!debugPrinted) {
+            std::cout << "[VirtualBackgroundProcessor] Letterbox math:" << std::endl;
+            std::cout << "  Original: " << frame.cols << "x" << frame.rows << std::endl;
+            std::cout << "  Scale: " << scale << std::endl;
+            std::cout << "  Scaled: " << scaledWidth << "x" << scaledHeight << std::endl;
+            std::cout << "  Offset: (" << offsetX << ", " << offsetY << ")" << std::endl;
+            debugPrinted = true;
+        }
+        
+        // Ensure offsets are valid
+        if (offsetX >= 0 && offsetY >= 0 && 
+            offsetX + scaledWidth <= inputSize && 
+            offsetY + scaledHeight <= inputSize) {
+            scaled.copyTo(letterboxed(cv::Rect(offsetX, offsetY, scaledWidth, scaledHeight)));
+        }
         
         // Convert to RGB and normalize to [0, 1]
         cv::Mat rgb;
-        cv::cvtColor(resized, rgb, cv::COLOR_BGR2RGB);
+        cv::cvtColor(letterboxed, rgb, cv::COLOR_BGR2RGB);
         rgb.convertTo(rgb, CV_32F, 1.0 / 255.0);
         
         // Prepare input tensor [1, 3, 256, 256]
@@ -781,15 +823,41 @@ cv::Mat VirtualBackgroundProcessor::SegmentPersonWithONNX(const cv::Mat& frame)
         // Convert to OpenCV Mat
         cv::Mat maskSmall(inputSize, inputSize, CV_32F, outputData);
         
-        // Resize back to original frame size
-        cv::Mat mask;
-        cv::resize(maskSmall, mask, frame.size(), 0, 0, cv::INTER_LINEAR);
-        
-        // Convert to 8-bit [0, 255]
-        mask.convertTo(mask, CV_8U, 255.0);
-        
-        // Post-process for better quality
-        return PostProcessMask(mask, frame);
+        // IMPORTANT: Remove letterboxing padding - crop to scaled region
+        // Validate crop rectangle before using it
+        if (offsetX >= 0 && offsetY >= 0 && 
+            scaledWidth > 0 && scaledHeight > 0 &&
+            offsetX + scaledWidth <= inputSize && 
+            offsetY + scaledHeight <= inputSize) {
+            
+            cv::Rect cropRect(offsetX, offsetY, scaledWidth, scaledHeight);
+            cv::Mat maskCropped = maskSmall(cropRect).clone();
+            
+            // Resize cropped mask back to original frame size
+            // Use INTER_LINEAR instead of INTER_CUBIC - may have better alignment
+            cv::Mat mask;
+            cv::resize(maskCropped, mask, frame.size(), 0, 0, cv::INTER_LINEAR);
+            
+            // Convert to 8-bit [0, 255]
+            mask.convertTo(mask, CV_8U, 255.0);
+            
+            // Apply horizontal shift correction using cv::warpAffine for sub-pixel accuracy
+            // Shift mask slightly left to compensate for observed right-side bias
+            cv::Mat shiftedMask;
+            float shiftX = -1.5f;  // Negative = shift left (sub-pixel precision)
+            cv::Mat M = (cv::Mat_<float>(2, 3) << 1, 0, shiftX, 0, 1, 0);
+            cv::warpAffine(mask, shiftedMask, M, mask.size(), cv::INTER_LINEAR, cv::BORDER_REPLICATE);
+            
+            // Post-process for better quality
+            return PostProcessMask(shiftedMask, frame);
+        } else {
+            // Fallback: use entire mask if crop validation fails
+            std::cerr << "[VirtualBackgroundProcessor] Invalid crop rect, using full mask" << std::endl;
+            cv::Mat mask;
+            cv::resize(maskSmall, mask, frame.size(), 0, 0, cv::INTER_CUBIC);
+            mask.convertTo(mask, CV_8U, 255.0);
+            return PostProcessMask(mask, frame);
+        }
         
     } catch (const Ort::Exception& e) {
         std::cerr << "[VirtualBackgroundProcessor] ONNX inference error: " << e.what() << std::endl;
@@ -890,14 +958,20 @@ cv::Mat VirtualBackgroundProcessor::PostProcessMask(const cv::Mat& rawMask, cons
 {
     cv::Mat mask = rawMask.clone();
     
-    // 1. Morphological operations to clean up mask
+    // 1. Gentle morphological operations to clean up mask WITHOUT shrinking
     cv::Mat kernel3 = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));
     cv::Mat kernel5 = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+    cv::Mat kernel7 = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(7, 7));
     
-    // Remove small noise
-    cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel3, cv::Point(-1, -1), 1);
-    // Fill small holes
+    // Fill small holes first (before removing noise to preserve person boundary)
     cv::morphologyEx(mask, mask, cv::MORPH_CLOSE, kernel5, cv::Point(-1, -1), 2);
+    
+    // Remove very small noise (use small kernel to avoid shrinking person)
+    cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel3, cv::Point(-1, -1), 1);
+    
+    // IMPORTANT: Slightly expand the mask to ensure we capture the full person (especially head)
+    // This prevents cutting off the top of the head
+    cv::dilate(mask, mask, kernel7, cv::Point(-1, -1), 1);
     
     // 2. Edge refinement using guided filter or bilateral filter
     EdgeRefinement(mask, frame);

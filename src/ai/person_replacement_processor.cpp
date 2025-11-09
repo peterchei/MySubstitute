@@ -531,8 +531,21 @@ cv::Mat PersonReplacementProcessor::ReplaceFace(const cv::Mat& frame, const cv::
         expandedSourceRect.height = std::min(frame.rows - expandedSourceRect.y, 
                                              sourceFaceRect.height + 2 * expandY);
 
+        // CRITICAL: Validate rect is within bounds (prevent ROI errors)
+        if (!IsValidROI(expandedSourceRect, frame)) {
+            std::cerr << "[Face Swap] Invalid expanded rect, skipping face" << std::endl;
+            continue;  // Skip this face
+        }
+
         // Extract face regions with expansion
         cv::Mat sourceFace = frame(expandedSourceRect);
+        
+        // CRITICAL: Validate target face rect is within bounds
+        if (!IsValidROI(targetFaceRect, targetImage)) {
+            std::cerr << "[Face Swap] Invalid target rect, skipping face" << std::endl;
+            continue;  // Skip this face
+        }
+        
         cv::Mat targetFace = targetImage(targetFaceRect);
 
         // Resize target face to match expanded source size
@@ -632,6 +645,12 @@ cv::Mat PersonReplacementProcessor::EnhanceFaceInFrame(const cv::Mat& frame)
 
     // Enhance each detected face
     for (const auto& faceRect : faces) {
+        // CRITICAL: Validate face rect is within bounds
+        if (!IsValidROI(faceRect, frame)) {
+            std::cerr << "[Face Enhance] Invalid face rect, skipping" << std::endl;
+            continue;
+        }
+        
         cv::Mat face = frame(faceRect);
         cv::Mat enhancedFace = EnhanceFace(face);
 
@@ -703,18 +722,18 @@ std::vector<cv::Rect> PersonReplacementProcessor::DetectFaces(const cv::Mat& fra
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
     cv::equalizeHist(gray, gray);
 
-    // Detect faces using Haar cascade with BALANCED parameters for accuracy + detection
-    // scaleFactor: 1.15 (balanced between speed and accuracy)
-    // minNeighbors: 6 (balanced - good detection with reasonable false positive rejection)
-    // minSize: 80x80 (reasonable minimum face size)
-    // maxSize: frame.cols/2 (prevent detecting entire image as face)
+    // Detect faces using Haar cascade - OPTIMIZED FOR MEETING VIDEO
+    // scaleFactor: 1.08 (more sensitive - better detection)
+    // minNeighbors: 4 (lower threshold - easier to detect)
+    // minSize: 40x40 (smaller minimum - detect faces at various distances)
+    // maxSize: frame.cols (allow larger detections for close-up)
     std::vector<cv::Rect> detectedFaces;
-    cv::Size maxSize(frame.cols / 2, frame.rows / 2);
-    m_faceCascade.detectMultiScale(gray, detectedFaces, 1.15, 6, 0, cv::Size(80, 80), maxSize);
+    cv::Size maxSize(frame.cols, frame.rows);
+    m_faceCascade.detectMultiScale(gray, detectedFaces, 1.08, 4, 0, cv::Size(40, 40), maxSize);
 
-    // Filter faces: Only keep faces in CENTER 80% of frame (reject far edges/background)
-    int centerMarginX = frame.cols * 0.1;  // 10% margin on each side
-    int centerMarginY = frame.rows * 0.05;  // 5% margin top/bottom
+    // Filter faces: Accept faces in CENTER 95% of frame (meeting videos typically centered)
+    int centerMarginX = frame.cols * 0.025;  // Only 2.5% margin each side
+    int centerMarginY = frame.rows * 0.025;  // Only 2.5% margin top/bottom
     cv::Rect centerRegion(centerMarginX, centerMarginY, 
                           frame.cols - 2 * centerMarginX, 
                           frame.rows - 2 * centerMarginY);
@@ -723,11 +742,11 @@ std::vector<cv::Rect> PersonReplacementProcessor::DetectFaces(const cv::Mat& fra
         // Calculate center of detected face
         cv::Point faceCenter(face.x + face.width / 2, face.y + face.height / 2);
         
-        // Only accept faces with center in the central region
+        // Accept faces in the very wide central region (meeting scenario)
         if (centerRegion.contains(faceCenter)) {
-            // Additional check: aspect ratio should be reasonable (0.7 to 1.3)
+            // Relaxed aspect ratio check (0.6 to 1.5 - handles slight angles)
             float aspectRatio = static_cast<float>(face.width) / face.height;
-            if (aspectRatio > 0.7f && aspectRatio < 1.3f) {
+            if (aspectRatio > 0.6f && aspectRatio < 1.5f) {
                 faces.push_back(face);
             }
         }
@@ -763,6 +782,12 @@ std::vector<cv::Rect> PersonReplacementProcessor::DetectFaces(const cv::Mat& fra
                         bestMatch.y = static_cast<int>(prevFace.y * 0.8 + face.y * 0.2);
                         bestMatch.width = static_cast<int>(prevFace.width * 0.8 + face.width * 0.2);
                         bestMatch.height = static_cast<int>(prevFace.height * 0.8 + face.height * 0.2);
+                        
+                        // CRITICAL: Clamp to frame boundaries to prevent ROI errors
+                        bestMatch.x = std::max(0, std::min(bestMatch.x, frame.cols - bestMatch.width));
+                        bestMatch.y = std::max(0, std::min(bestMatch.y, frame.rows - bestMatch.height));
+                        bestMatch.width = std::min(bestMatch.width, frame.cols - bestMatch.x);
+                        bestMatch.height = std::min(bestMatch.height, frame.rows - bestMatch.y);
                     }
                 }
             }
@@ -810,6 +835,15 @@ float PersonReplacementProcessor::CalculateFaceOverlap(const cv::Rect& rect1, co
     int unionArea = rect1Area + rect2Area - intersectionArea;
     
     return static_cast<float>(intersectionArea) / static_cast<float>(unionArea);
+}
+
+// Helper function to validate ROI is within image bounds
+bool PersonReplacementProcessor::IsValidROI(const cv::Rect& rect, const cv::Mat& image) const
+{
+    return rect.x >= 0 && rect.y >= 0 && 
+           rect.width > 0 && rect.height > 0 &&
+           rect.x + rect.width <= image.cols &&
+           rect.y + rect.height <= image.rows;
 }
 
 cv::Mat PersonReplacementProcessor::MatchColorHistogram(const cv::Mat& source, const cv::Mat& target)
