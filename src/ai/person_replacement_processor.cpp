@@ -15,6 +15,7 @@ PersonReplacementProcessor::PersonReplacementProcessor()
     , m_backend("ONNX")
     , m_processingTime(0.0)
     , m_frameCounter(0)
+    , m_framesWithoutDetection(0)  // Face tracking initialization
     , m_useVideoTarget(false)
     , m_useDNNFaceDetection(false)
     , m_modelLoaded(false)
@@ -702,13 +703,113 @@ std::vector<cv::Rect> PersonReplacementProcessor::DetectFaces(const cv::Mat& fra
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
     cv::equalizeHist(gray, gray);
 
-    // Detect faces using Haar cascade with more lenient parameters
-    // Parameters: image, objects, scaleFactor, minNeighbors, flags, minSize, maxSize
-    // Reduced minNeighbors from 3 to 2 for better detection
-    // Reduced minSize from 30x30 to 20x20 for smaller faces
-    m_faceCascade.detectMultiScale(gray, faces, 1.05, 2, 0, cv::Size(20, 20));
+    // Detect faces using Haar cascade with BALANCED parameters for accuracy + detection
+    // scaleFactor: 1.15 (balanced between speed and accuracy)
+    // minNeighbors: 6 (balanced - good detection with reasonable false positive rejection)
+    // minSize: 80x80 (reasonable minimum face size)
+    // maxSize: frame.cols/2 (prevent detecting entire image as face)
+    std::vector<cv::Rect> detectedFaces;
+    cv::Size maxSize(frame.cols / 2, frame.rows / 2);
+    m_faceCascade.detectMultiScale(gray, detectedFaces, 1.15, 6, 0, cv::Size(80, 80), maxSize);
+
+    // Filter faces: Only keep faces in CENTER 80% of frame (reject far edges/background)
+    int centerMarginX = frame.cols * 0.1;  // 10% margin on each side
+    int centerMarginY = frame.rows * 0.05;  // 5% margin top/bottom
+    cv::Rect centerRegion(centerMarginX, centerMarginY, 
+                          frame.cols - 2 * centerMarginX, 
+                          frame.rows - 2 * centerMarginY);
+
+    for (const auto& face : detectedFaces) {
+        // Calculate center of detected face
+        cv::Point faceCenter(face.x + face.width / 2, face.y + face.height / 2);
+        
+        // Only accept faces with center in the central region
+        if (centerRegion.contains(faceCenter)) {
+            // Additional check: aspect ratio should be reasonable (0.7 to 1.3)
+            float aspectRatio = static_cast<float>(face.width) / face.height;
+            if (aspectRatio > 0.7f && aspectRatio < 1.3f) {
+                faces.push_back(face);
+            }
+        }
+    }
+
+    // If multiple faces detected, choose the largest one (closest to camera)
+    if (faces.size() > 1) {
+        auto largestFace = std::max_element(faces.begin(), faces.end(),
+            [](const cv::Rect& a, const cv::Rect& b) {
+                return (a.width * a.height) < (b.width * b.height);
+            });
+        faces = { *largestFace };
+    }
+
+    // Face tracking: Match detected faces with previous frame
+    if (!m_previousFaces.empty() && !faces.empty()) {
+        std::vector<cv::Rect> stabilizedFaces;
+        
+        for (auto& face : faces) {
+            // Find best matching face from previous frame
+            cv::Rect bestMatch = face;
+            float bestOverlap = 0.0f;
+            
+            for (const auto& prevFace : m_previousFaces) {
+                float overlap = CalculateFaceOverlap(face, prevFace);
+                if (overlap > bestOverlap) {
+                    bestOverlap = overlap;
+                    
+                    // Smooth transition: blend current and previous position
+                    if (overlap > FACE_OVERLAP_THRESHOLD) {
+                        // 80% previous position, 20% new detection (very smooth)
+                        bestMatch.x = static_cast<int>(prevFace.x * 0.8 + face.x * 0.2);
+                        bestMatch.y = static_cast<int>(prevFace.y * 0.8 + face.y * 0.2);
+                        bestMatch.width = static_cast<int>(prevFace.width * 0.8 + face.width * 0.2);
+                        bestMatch.height = static_cast<int>(prevFace.height * 0.8 + face.height * 0.2);
+                    }
+                }
+            }
+            
+            stabilizedFaces.push_back(bestMatch);
+        }
+        
+        faces = stabilizedFaces;
+        m_framesWithoutDetection = 0;
+    }
+    else if (faces.empty() && !m_previousFaces.empty()) {
+        // No detection this frame - use previous faces for a few frames (persistence)
+        if (m_framesWithoutDetection < MAX_FRAMES_WITHOUT_DETECTION) {
+            faces = m_previousFaces;
+            m_framesWithoutDetection++;
+        }
+    }
+    else {
+        m_framesWithoutDetection = 0;
+    }
+
+    // Update previous faces
+    if (!faces.empty()) {
+        m_previousFaces = faces;
+    }
 
     return faces;
+}
+
+// Helper function to calculate overlap between two rectangles
+float PersonReplacementProcessor::CalculateFaceOverlap(const cv::Rect& rect1, const cv::Rect& rect2)
+{
+    int x1 = std::max(rect1.x, rect2.x);
+    int y1 = std::max(rect1.y, rect2.y);
+    int x2 = std::min(rect1.x + rect1.width, rect2.x + rect2.width);
+    int y2 = std::min(rect1.y + rect1.height, rect2.y + rect2.height);
+    
+    if (x2 < x1 || y2 < y1) {
+        return 0.0f;  // No overlap
+    }
+    
+    int intersectionArea = (x2 - x1) * (y2 - y1);
+    int rect1Area = rect1.width * rect1.height;
+    int rect2Area = rect2.width * rect2.height;
+    int unionArea = rect1Area + rect2Area - intersectionArea;
+    
+    return static_cast<float>(intersectionArea) / static_cast<float>(unionArea);
 }
 
 cv::Mat PersonReplacementProcessor::MatchColorHistogram(const cv::Mat& source, const cv::Mat& target)
@@ -943,76 +1044,99 @@ cv::Mat PersonReplacementProcessor::RunFaceSwapInference(const cv::Mat& sourceFa
     }
 
     try {
-        // simswap.onnx uses 224x224 input (standard SimSwap size)
+        // simswap.onnx requires:
+        //   1. target: [1, 3, 224, 224] - target face image
+        //   2. source_embedding: [1, 512] - source face embedding from ArcFace
         int inputSize = 224;
         
-        // Preprocess source face (the face to extract identity from)
-        cv::Mat sourcePreprocessed;
-        cv::resize(sourceFace, sourcePreprocessed, cv::Size(inputSize, inputSize), 0, 0, cv::INTER_CUBIC);
-        cv::cvtColor(sourcePreprocessed, sourcePreprocessed, cv::COLOR_BGR2RGB);
-        
-        // Normalize to [-1, 1] range (common for SimSwap models)
-        sourcePreprocessed.convertTo(sourcePreprocessed, CV_32FC3, 2.0 / 255.0, -1.0);
+        // Step 1: Extract source face embedding using ArcFace model
+        std::vector<float> sourceEmbedding(512);
+        if (m_faceEmbeddingLoaded) {
+            // Preprocess source face for ArcFace (typically 112x112 for ArcFace)
+            cv::Mat arcfaceInput;
+            cv::resize(sourceFace, arcfaceInput, cv::Size(112, 112), 0, 0, cv::INTER_CUBIC);
+            cv::cvtColor(arcfaceInput, arcfaceInput, cv::COLOR_BGR2RGB);
+            arcfaceInput.convertTo(arcfaceInput, CV_32FC3, 1.0 / 127.5, -1.0);  // Normalize to [-1, 1]
 
-        // Preprocess target face (the face to swap onto)
+            // Convert HWC to CHW
+            std::vector<int64_t> arcfaceShape = {1, 3, 112, 112};
+            std::vector<float> arcfaceValues(1 * 3 * 112 * 112);
+            for (int c = 0; c < 3; ++c) {
+                for (int h = 0; h < 112; ++h) {
+                    for (int w = 0; w < 112; ++w) {
+                        int idx = c * 112 * 112 + h * 112 + w;
+                        arcfaceValues[idx] = arcfaceInput.at<cv::Vec3f>(h, w)[c];
+                    }
+                }
+            }
+
+            // Run ArcFace inference to get embedding
+            Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+            Ort::Value arcfaceTensor = Ort::Value::CreateTensor<float>(
+                memoryInfo, arcfaceValues.data(), arcfaceValues.size(), arcfaceShape.data(), arcfaceShape.size());
+
+            const char* arcfaceInputName = "input";  // Common ArcFace input name
+            const char* arcfaceOutputName = "output"; // Common ArcFace output name
+            
+            auto arcfaceOutput = m_faceEmbeddingSession->Run(
+                Ort::RunOptions{nullptr},
+                &arcfaceInputName, &arcfaceTensor, 1,
+                &arcfaceOutputName, 1);
+
+            // Extract embedding [1, 512]
+            float* embeddingData = arcfaceOutput[0].GetTensorMutableData<float>();
+            std::copy(embeddingData, embeddingData + 512, sourceEmbedding.begin());
+            
+            std::cout << "✅ Extracted face embedding (512D)" << std::endl;
+        } else {
+            // No embedding model - cannot proceed
+            std::cerr << "❌ ArcFace embedding model not loaded, cannot run face swap" << std::endl;
+            return cv::Mat();
+        }
+
+        // Step 2: Preprocess target face for face swap model (224x224)
         cv::Mat targetPreprocessed;
         cv::resize(targetFace, targetPreprocessed, cv::Size(inputSize, inputSize), 0, 0, cv::INTER_CUBIC);
         cv::cvtColor(targetPreprocessed, targetPreprocessed, cv::COLOR_BGR2RGB);
-        targetPreprocessed.convertTo(targetPreprocessed, CV_32FC3, 2.0 / 255.0, -1.0);
+        targetPreprocessed.convertTo(targetPreprocessed, CV_32FC3, 2.0 / 255.0, -1.0);  // [-1, 1]
 
-        // Create tensors for both inputs
-        std::vector<int64_t> inputShape = {1, 3, inputSize, inputSize};
-        size_t inputTensorSize = 1 * 3 * inputSize * inputSize;
-        
-        std::vector<float> sourceValues(inputTensorSize);
-        std::vector<float> targetValues(inputTensorSize);
+        // Convert HWC to CHW format
+        std::vector<int64_t> targetShape = {1, 3, inputSize, inputSize};
+        size_t targetTensorSize = 1 * 3 * inputSize * inputSize;
+        std::vector<float> targetValues(targetTensorSize);
 
-        // Convert HWC to CHW format for both inputs
         for (int c = 0; c < 3; ++c) {
             for (int h = 0; h < inputSize; ++h) {
                 for (int w = 0; w < inputSize; ++w) {
                     int idx = c * inputSize * inputSize + h * inputSize + w;
-                    sourceValues[idx] = sourcePreprocessed.at<cv::Vec3f>(h, w)[c];
                     targetValues[idx] = targetPreprocessed.at<cv::Vec3f>(h, w)[c];
                 }
             }
         }
 
-        // Create ONNX tensors
+        // Step 3: Create input tensors for face swap model
         Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
         
-        // crossface_simswap typically takes two inputs: source and target
-        Ort::Value sourceTensor = Ort::Value::CreateTensor<float>(
-            memoryInfo, sourceValues.data(), inputTensorSize, inputShape.data(), inputShape.size());
+        std::vector<int64_t> embeddingShape = {1, 512};
+        Ort::Value embeddingTensor = Ort::Value::CreateTensor<float>(
+            memoryInfo, sourceEmbedding.data(), sourceEmbedding.size(), embeddingShape.data(), embeddingShape.size());
         
         Ort::Value targetTensor = Ort::Value::CreateTensor<float>(
-            memoryInfo, targetValues.data(), inputTensorSize, inputShape.data(), inputShape.size());
+            memoryInfo, targetValues.data(), targetTensorSize, targetShape.data(), targetShape.size());
 
-        // Get input/output names from the model
-        std::vector<const char*> inputNames;
-        std::vector<const char*> outputNames;
+        // Input names: "target" and "source_embedding"
+        const char* inputNames[] = {"target", "source_embedding"};
+        const char* outputNames[] = {"output"};
         
-        // Check how many inputs the model expects
-        size_t numInputs = m_faceSwapSession->GetInputCount();
-        Ort::AllocatorWithDefaultOptions allocator;
-        
-        for (size_t i = 0; i < numInputs; ++i) {
-            inputNames.push_back(m_faceSwapSession->GetInputNameAllocated(i, allocator).get());
-        }
-        outputNames.push_back(m_faceSwapSession->GetOutputNameAllocated(0, allocator).get());
-
-        // Prepare input tensors based on model requirements
         std::vector<Ort::Value> inputTensors;
-        inputTensors.push_back(std::move(targetTensor));  // Target face (to be swapped)
-        if (numInputs > 1) {
-            inputTensors.push_back(std::move(sourceTensor));  // Source face (identity)
-        }
+        inputTensors.push_back(std::move(targetTensor));
+        inputTensors.push_back(std::move(embeddingTensor));
 
-        // Run inference
+        // Step 4: Run face swap inference
         auto outputTensors = m_faceSwapSession->Run(
             Ort::RunOptions{nullptr}, 
-            inputNames.data(), inputTensors.data(), inputTensors.size(),
-            outputNames.data(), 1);
+            inputNames, inputTensors.data(), inputTensors.size(),
+            outputNames, 1);
 
         // Get output tensor
         float* outputData = outputTensors[0].GetTensorMutableData<float>();
@@ -1039,9 +1163,9 @@ cv::Mat PersonReplacementProcessor::RunFaceSwapInference(const cv::Mat& sourceFa
         cv::cvtColor(output, output, cv::COLOR_RGB2BGR);
         
         // Resize to original face size
-        cv::resize(output, output, sourceFace.size(), 0, 0, cv::INTER_CUBIC);
+        cv::resize(output, output, targetFace.size(), 0, 0, cv::INTER_CUBIC);
 
-        std::cout << "✅ AI face swap successful (crossface_simswap)" << std::endl;
+        std::cout << "✅ AI face swap successful (simswap.onnx)" << std::endl;
         return output;
     }
     catch (const std::exception& e) {

@@ -100,6 +100,9 @@ private:
     cv::Mat AlphaBlendWithMask(const cv::Mat& background, const cv::Mat& foreground, 
                               const cv::Mat& mask, float blendStrength);
 
+    // Face tracking helper
+    float CalculateFaceOverlap(const cv::Rect& rect1, const cv::Rect& rect2);
+
     // Blending and compositing
     cv::Mat SeamlessBlend(const cv::Mat& source, const cv::Mat& target, const cv::Mat& mask);
     cv::Mat PoissonBlend(const cv::Mat& source, const cv::Mat& target, const cv::Point& center);
@@ -162,6 +165,12 @@ private:
     // Performance tracking
     double m_processingTime;
     int m_frameCounter;
+
+    // Face tracking for stability (prevent blinking)
+    std::vector<cv::Rect> m_previousFaces;
+    int m_framesWithoutDetection;
+    const int MAX_FRAMES_WITHOUT_DETECTION = 5;
+    const float FACE_OVERLAP_THRESHOLD = 0.5f;
 
     // Parameters storage
     std::map<std::string, std::string> m_parameters;
