@@ -9,6 +9,9 @@ A complete Windows virtual camera solution that captures real camera feeds, proc
 - **Getting Started**: See [Quick Start Guide](docs/QUICKSTART.md)
 - **Setup & Installation**: See [Development Setup](docs/development_setup.md)
 - **Virtual Background**: See [Virtual Background Setup](docs/VIRTUAL_BACKGROUND_SETUP.md)
+- **Person Replacement**: See [Person Replacement Guide](docs/person_replacement_processor.md) ⭐ NEW
+- **Person Replacement Quick Start**: See [Quick Start](docs/person_replacement_quickstart.md) ⭐ NEW
+- **Model Conversion**: See [Model Conversion Guide](docs/model_conversion_guide.md) ⭐ NEW
 - **UI Controls**: See [UI Virtual Background Controls](docs/UI_VIRTUAL_BACKGROUND_CONTROLS.md)
 - **Architecture**: See [Filter Architecture](docs/FILTER_ARCHITECTURE.md)
 - **All Documentation**: See [docs/](docs/) folder
@@ -47,6 +50,14 @@ A complete Windows virtual camera solution that captures real camera feeds, proc
   - Minecraft style (8×8 blocky pixels, vibrant colors)
   - Anime pixel style (4×4 detailed pixels, anime palette)
   - Retro 16-bit style (6×6 pixels with optional dithering)
+- ✅ **Person Replacement** ⭐ NEW: Advanced AI-powered person manipulation
+  - Face Swapping (DeepSeek/DeepFake-style with ONNX models)
+  - Full Body Replacement (AI person segmentation)
+  - Face Enhancement (GFPGAN/CodeFormer-style restoration)
+  - Super Resolution (Real-ESRGAN 2x-4x upscaling)
+  - Supports ONNX Runtime with CPU/GPU acceleration
+  - OpenCV fallback implementations for all modes
+  - See [Person Replacement Documentation](docs/person_replacement_processor.md)
 - ✅ Professional caption overlays with semi-transparent backgrounds
 - ✅ Customizable text positioning, scaling, and colors
 - ✅ Real-time frame processing with temporal stabilization
@@ -68,6 +79,10 @@ A complete Windows virtual camera solution that captures real camera feeds, proc
   - Pixel Art Minecraft (blocky 8×8)
   - Pixel Art Anime (detailed 4×4)
   - Pixel Art Retro (6×6 with dithering)
+  - AI Face Swap (DeepSeek-style replacement) ⭐ NEW
+  - AI Full Body Replace (complete person swap) ⭐ NEW
+  - AI Face Enhancement (GFPGAN quality) ⭐ NEW
+  - AI Super Resolution (2x-4x upscaling) ⭐ NEW
 - ✅ Face filter controls (checkboxes for accessories, text input for speech)
 - ✅ Always-on-top and positioning controls
 - ✅ Right-click context menu for quick settings
@@ -148,6 +163,21 @@ Main Process:                    DirectShow DLL:
   - Color quantization (3 style modes)
   - Temporal blending for stability
 - ✅ `CartoonBufferedFilterProcessor`: Enhanced cartoon with frame buffering
+- ✅ `PixelArtProcessor`: Anime-inspired pixel art styles with color palette conversion
+  - Minecraft mode: 8×8 blocky pixels with vibrant saturated colors
+  - Anime mode: 4×4 detailed pixels with anime color palette
+  - Retro 16-bit mode: 6×6 pixels with optional dithering effect
+- ✅ `PersonReplacementProcessor` ⭐ NEW: Advanced AI-powered person manipulation
+  - **Face Swap Mode**: DeepFake-style face replacement with ONNX models (SimSwap, InsightFace)
+  - **Full Body Replace**: Complete person substitution using AI segmentation (MediaPipe)
+  - **Face Enhancement**: GFPGAN/CodeFormer-style face restoration and quality improvement
+  - **Super Resolution**: Real-ESRGAN AI upscaling (2x-4x resolution increase)
+  - **Style Transfer**: Neural style transfer (future implementation)
+  - ONNX Runtime integration with CPU/GPU acceleration support
+  - OpenCV fallback implementations (Haar Cascade, bilateral filtering, bicubic upscaling)
+  - Configurable blend strength (0.0-1.0) for natural results
+  - Support for static images and video as replacement targets
+  - See [Person Replacement Documentation](docs/person_replacement_processor.md)
   - 5-frame temporal buffer
   - Weighted temporal blending (70/30)
   - Optimized for performance and stability
