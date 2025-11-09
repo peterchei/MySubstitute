@@ -61,6 +61,7 @@ public:
 
     // Model management
     bool LoadFaceSwapModel(const std::string& modelPath);
+    bool LoadFaceEmbeddingModel(const std::string& modelPath);  // ArcFace backbone
     bool LoadSuperResolutionModel(const std::string& modelPath);
     bool LoadFaceEnhancementModel(const std::string& modelPath);
     bool LoadSegmentationModel(const std::string& modelPath);
@@ -92,6 +93,12 @@ private:
 
     // Person segmentation
     cv::Mat SegmentPerson(const cv::Mat& frame);
+
+    // Color correction and blending helpers
+    cv::Mat MatchColorHistogram(const cv::Mat& source, const cv::Mat& target);
+    cv::Mat CreateFeatheredMask(const cv::Size& size);
+    cv::Mat AlphaBlendWithMask(const cv::Mat& background, const cv::Mat& foreground, 
+                              const cv::Mat& mask, float blendStrength);
 
     // Blending and compositing
     cv::Mat SeamlessBlend(const cv::Mat& source, const cv::Mat& target, const cv::Mat& mask);
@@ -126,6 +133,7 @@ private:
     
     // Multiple models for different tasks
     std::unique_ptr<Ort::Session> m_faceSwapSession;
+    std::unique_ptr<Ort::Session> m_faceEmbeddingSession;  // ArcFace for face embeddings
     std::unique_ptr<Ort::Session> m_superResSession;
     std::unique_ptr<Ort::Session> m_faceEnhanceSession;
     std::unique_ptr<Ort::Session> m_segmentationSession;
@@ -138,6 +146,7 @@ private:
     std::string m_enhanceOutputName;
     
     bool m_faceSwapLoaded;
+    bool m_faceEmbeddingLoaded;  // ArcFace embedding model
     bool m_superResLoaded;
     bool m_faceEnhanceLoaded;
     bool m_segmentationLoaded;

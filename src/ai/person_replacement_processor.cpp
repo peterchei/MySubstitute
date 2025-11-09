@@ -20,6 +20,7 @@ PersonReplacementProcessor::PersonReplacementProcessor()
     , m_modelLoaded(false)
 #ifdef HAVE_ONNX
     , m_faceSwapLoaded(false)
+    , m_faceEmbeddingLoaded(false)
     , m_superResLoaded(false)
     , m_faceEnhanceLoaded(false)
     , m_segmentationLoaded(false)
@@ -91,6 +92,43 @@ bool PersonReplacementProcessor::Initialize()
         std::cerr << "Warning: Could not load face detection cascade. Face detection may not work." << std::endl;
     }
 
+    // Auto-load face swap models if available
+#ifdef HAVE_ONNX
+    // Load ArcFace embedding model first (required for crossface_simswap)
+    std::vector<std::string> arcfacePaths = {
+        "models/simswap_arcface_backbone.onnx",
+        "../../../models/simswap_arcface_backbone.onnx"
+    };
+    
+    for (const auto& modelPath : arcfacePaths) {
+        if (LoadFaceEmbeddingModel(modelPath)) {
+            std::cout << "✅ Loaded face embedding model: " << modelPath << std::endl;
+            break;
+        }
+    }
+
+    // Load face swap model
+    std::vector<std::string> faceSwapPaths = {
+        "models/simswap.onnx",                        // Standard SimSwap (4D input, works directly)
+        "../../../models/simswap.onnx",
+        "models/inswapper_128.onnx",                  // InsightFace (standalone)
+        "../../../models/inswapper_128.onnx"
+        // Note: crossface_simswap.onnx needs embeddings, not images - skip for now
+    };
+
+    for (const auto& modelPath : faceSwapPaths) {
+        if (LoadFaceSwapModel(modelPath)) {
+            std::cout << "✅ Auto-loaded face swap model: " << modelPath << std::endl;
+            break;
+        }
+    }
+
+    if (!m_faceSwapLoaded) {
+        std::cout << "ℹ️ No AI face swap model found - using OpenCV fallback" << std::endl;
+        std::cout << "   For better quality, place crossface_simswap.onnx in models/ folder" << std::endl;
+    }
+#endif
+
     std::cout << "PersonReplacementProcessor initialized successfully!" << std::endl;
     return true;
 #endif
@@ -111,6 +149,7 @@ void PersonReplacementProcessor::Cleanup()
 #ifdef HAVE_ONNX
     // ONNX sessions will auto-cleanup via unique_ptr
     m_faceSwapSession.reset();
+    m_faceEmbeddingSession.reset();
     m_superResSession.reset();
     m_faceEnhanceSession.reset();
     m_segmentationSession.reset();
@@ -118,6 +157,7 @@ void PersonReplacementProcessor::Cleanup()
     m_onnxEnv.reset();
     
     m_faceSwapLoaded = false;
+    m_faceEmbeddingLoaded = false;
     m_superResLoaded = false;
     m_faceEnhanceLoaded = false;
     m_segmentationLoaded = false;
@@ -280,6 +320,27 @@ bool PersonReplacementProcessor::LoadFaceSwapModel(const std::string& modelPath)
 #endif
 }
 
+bool PersonReplacementProcessor::LoadFaceEmbeddingModel(const std::string& modelPath)
+{
+#ifndef HAVE_ONNX
+    std::cerr << "ONNX Runtime not available!" << std::endl;
+    return false;
+#else
+    try {
+        std::wstring wModelPath(modelPath.begin(), modelPath.end());
+        m_faceEmbeddingSession = std::make_unique<Ort::Session>(*m_onnxEnv, wModelPath.c_str(), *m_sessionOptions);
+        
+        m_faceEmbeddingLoaded = true;
+        std::cout << "Face embedding model (ArcFace) loaded: " << modelPath << std::endl;
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Failed to load face embedding model: " << e.what() << std::endl;
+        return false;
+    }
+#endif
+}
+
 bool PersonReplacementProcessor::LoadSuperResolutionModel(const std::string& modelPath)
 {
 #ifndef HAVE_ONNX
@@ -424,12 +485,30 @@ cv::Mat PersonReplacementProcessor::ReplaceFace(const cv::Mat& frame, const cv::
     std::vector<cv::Rect> targetFaces = DetectFaces(targetImage);
 
     if (sourceFaces.empty()) {
-        std::cerr << "No faces detected in source frame" << std::endl;
+        // Don't spam console - just draw helpful message on frame
+        static int framesSinceLastWarning = 0;
+        if (framesSinceLastWarning == 0) {
+            std::cout << "[Face Swap] No faces detected. Try: face camera directly, better lighting, remove glasses/mask" << std::endl;
+        }
+        framesSinceLastWarning = (framesSinceLastWarning + 1) % 60; // Log every 2 seconds at 30fps
+        
+        // Draw helpful message on frame
+        cv::putText(result, "No face detected - face camera directly", cv::Point(10, 30), 
+                   cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
+        cv::putText(result, "Try: better lighting, remove glasses/mask", cv::Point(10, 50), 
+                   cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
         return result;
     }
 
     if (targetFaces.empty()) {
-        std::cerr << "No faces detected in target image" << std::endl;
+        // Check target image only once
+        static bool targetWarningShown = false;
+        if (!targetWarningShown) {
+            std::cerr << "[Face Swap] No faces detected in target image. Use a clear frontal face photo." << std::endl;
+            targetWarningShown = true;
+        }
+        cv::putText(result, "No face in target image - use frontal face photo", cv::Point(10, 30), 
+                   cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
         return result;
     }
 
@@ -438,13 +517,26 @@ cv::Mat PersonReplacementProcessor::ReplaceFace(const cv::Mat& frame, const cv::
         const cv::Rect& sourceFaceRect = sourceFaces[i];
         const cv::Rect& targetFaceRect = targetFaces[i];
 
-        // Extract face regions
-        cv::Mat sourceFace = frame(sourceFaceRect);
+        // Expand face rect to include more context (forehead, chin, ears)
+        // This gives better blending at edges
+        int expandX = sourceFaceRect.width * 0.2;   // 20% expansion
+        int expandY = sourceFaceRect.height * 0.3;  // 30% expansion (more for forehead/chin)
+        
+        cv::Rect expandedSourceRect = sourceFaceRect;
+        expandedSourceRect.x = std::max(0, sourceFaceRect.x - expandX);
+        expandedSourceRect.y = std::max(0, sourceFaceRect.y - expandY);
+        expandedSourceRect.width = std::min(frame.cols - expandedSourceRect.x, 
+                                           sourceFaceRect.width + 2 * expandX);
+        expandedSourceRect.height = std::min(frame.rows - expandedSourceRect.y, 
+                                             sourceFaceRect.height + 2 * expandY);
+
+        // Extract face regions with expansion
+        cv::Mat sourceFace = frame(expandedSourceRect);
         cv::Mat targetFace = targetImage(targetFaceRect);
 
-        // Resize target face to match source face size
+        // Resize target face to match expanded source size
         cv::Mat resizedTarget;
-        cv::resize(targetFace, resizedTarget, sourceFace.size());
+        cv::resize(targetFace, resizedTarget, sourceFace.size(), 0, 0, cv::INTER_CUBIC);
 
 #ifdef HAVE_ONNX
         // Use ONNX model if loaded
@@ -456,12 +548,35 @@ cv::Mat PersonReplacementProcessor::ReplaceFace(const cv::Mat& frame, const cv::
         }
 #endif
 
-        // Blend the faces
+        // Apply color correction to match source lighting
+        cv::Mat colorCorrected = MatchColorHistogram(resizedTarget, sourceFace);
+        
+        // Create feathered mask for smooth blending
+        cv::Mat mask = CreateFeatheredMask(colorCorrected.size());
+        
+        // Seamless clone for better blending (Poisson blending)
         cv::Mat blended;
-        cv::addWeighted(sourceFace, 1.0 - m_blendStrength, resizedTarget, m_blendStrength, 0, blended);
+        try {
+            // Calculate center point for seamless clone
+            cv::Point center(expandedSourceRect.width / 2, expandedSourceRect.height / 2);
+            
+            // Convert mask to 8-bit for seamlessClone
+            cv::Mat mask8bit;
+            mask.convertTo(mask8bit, CV_8U, 255.0);
+            
+            // Use seamless clone for natural blending
+            cv::seamlessClone(colorCorrected, sourceFace, mask8bit, center, blended, cv::MIXED_CLONE);
+        }
+        catch (const cv::Exception& e) {
+            // Fallback to feathered alpha blending if seamlessClone fails
+            blended = AlphaBlendWithMask(sourceFace, colorCorrected, mask, m_blendStrength);
+        }
 
-        // Copy blended face back to result
-        blended.copyTo(result(sourceFaceRect));
+        // Copy blended result back
+        blended.copyTo(result(expandedSourceRect));
+        
+        // Draw subtle indicator (optional, comment out for production)
+        cv::rectangle(result, sourceFaceRect, cv::Scalar(0, 255, 0), 1);
     }
 
     return result;
@@ -577,15 +692,164 @@ std::vector<cv::Rect> PersonReplacementProcessor::DetectFaces(const cv::Mat& fra
 {
     std::vector<cv::Rect> faces;
 
+    if (m_faceCascade.empty()) {
+        // Cascade not loaded - can't detect faces
+        return faces;
+    }
+
     // Convert to grayscale for Haar cascade
     cv::Mat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
     cv::equalizeHist(gray, gray);
 
-    // Detect faces using Haar cascade
-    m_faceCascade.detectMultiScale(gray, faces, 1.1, 3, 0, cv::Size(30, 30));
+    // Detect faces using Haar cascade with more lenient parameters
+    // Parameters: image, objects, scaleFactor, minNeighbors, flags, minSize, maxSize
+    // Reduced minNeighbors from 3 to 2 for better detection
+    // Reduced minSize from 30x30 to 20x20 for smaller faces
+    m_faceCascade.detectMultiScale(gray, faces, 1.05, 2, 0, cv::Size(20, 20));
 
     return faces;
+}
+
+cv::Mat PersonReplacementProcessor::MatchColorHistogram(const cv::Mat& source, const cv::Mat& target)
+{
+    // Match color distribution of source to target for natural lighting
+    cv::Mat result = source.clone();
+    
+    if (source.empty() || target.empty() || source.size() != target.size()) {
+        return result;
+    }
+
+    // Split into channels
+    std::vector<cv::Mat> sourceChannels, targetChannels, resultChannels;
+    cv::split(source, sourceChannels);
+    cv::split(target, targetChannels);
+    
+    // Match histogram for each channel (B, G, R)
+    for (int i = 0; i < 3; i++) {
+        // Calculate histograms
+        cv::Mat sourceHist, targetHist;
+        int histSize = 256;
+        float range[] = {0, 256};
+        const float* histRange = {range};
+        
+        cv::calcHist(&sourceChannels[i], 1, 0, cv::Mat(), sourceHist, 1, &histSize, &histRange);
+        cv::calcHist(&targetChannels[i], 1, 0, cv::Mat(), targetHist, 1, &histSize, &histRange);
+        
+        // Calculate cumulative distribution
+        cv::Mat sourceCDF = sourceHist.clone();
+        cv::Mat targetCDF = targetHist.clone();
+        
+        for (int j = 1; j < histSize; j++) {
+            sourceCDF.at<float>(j) += sourceCDF.at<float>(j - 1);
+            targetCDF.at<float>(j) += targetCDF.at<float>(j - 1);
+        }
+        
+        // Normalize CDFs
+        sourceCDF /= sourceCDF.at<float>(histSize - 1);
+        targetCDF /= targetCDF.at<float>(histSize - 1);
+        
+        // Create lookup table for histogram matching
+        cv::Mat lookupTable(1, 256, CV_8U);
+        for (int j = 0; j < 256; j++) {
+            float sourceVal = sourceCDF.at<float>(j);
+            int k = 0;
+            while (k < 256 && targetCDF.at<float>(k) < sourceVal) {
+                k++;
+            }
+            lookupTable.at<uchar>(j) = std::min(k, 255);
+        }
+        
+        // Apply lookup table
+        cv::LUT(sourceChannels[i], lookupTable, sourceChannels[i]);
+    }
+    
+    // Merge channels back
+    cv::merge(sourceChannels, result);
+    
+    return result;
+}
+
+cv::Mat PersonReplacementProcessor::CreateFeatheredMask(const cv::Size& size)
+{
+    // Create elliptical mask with feathered edges for smooth blending
+    cv::Mat mask = cv::Mat::zeros(size, CV_32FC1);
+    
+    cv::Point center(size.width / 2, size.height / 2);
+    int radiusX = size.width / 2;
+    int radiusY = size.height / 2;
+    
+    // Create elliptical gradient mask
+    for (int y = 0; y < size.height; y++) {
+        for (int x = 0; x < size.width; x++) {
+            // Calculate normalized distance from center (elliptical)
+            float dx = (float)(x - center.x) / radiusX;
+            float dy = (float)(y - center.y) / radiusY;
+            float dist = std::sqrt(dx * dx + dy * dy);
+            
+            // Create smooth falloff
+            float value = 1.0f;
+            if (dist > 0.7f) {
+                // Feather the edges (30% outer region)
+                value = std::max(0.0f, (1.0f - dist) / 0.3f);
+                value = value * value; // Squared for smoother falloff
+            }
+            
+            mask.at<float>(y, x) = value;
+        }
+    }
+    
+    // Apply Gaussian blur for even smoother edges
+    cv::GaussianBlur(mask, mask, cv::Size(0, 0), size.width * 0.05);
+    
+    return mask;
+}
+
+cv::Mat PersonReplacementProcessor::AlphaBlendWithMask(const cv::Mat& background, 
+                                                       const cv::Mat& foreground, 
+                                                       const cv::Mat& mask, 
+                                                       float blendStrength)
+{
+    // Alpha blend two images using a mask
+    cv::Mat result = background.clone();
+    
+    if (background.size() != foreground.size() || background.size() != mask.size()) {
+        return result;
+    }
+    
+    // Ensure mask is 32F
+    cv::Mat maskF;
+    if (mask.type() != CV_32FC1) {
+        mask.convertTo(maskF, CV_32FC1, 1.0 / 255.0);
+    } else {
+        maskF = mask;
+    }
+    
+    // Apply blend strength to mask
+    maskF = maskF * blendStrength;
+    
+    // Convert images to float for blending
+    cv::Mat bgFloat, fgFloat;
+    background.convertTo(bgFloat, CV_32FC3);
+    foreground.convertTo(fgFloat, CV_32FC3);
+    
+    // Blend each pixel
+    for (int y = 0; y < result.rows; y++) {
+        for (int x = 0; x < result.cols; x++) {
+            float alpha = maskF.at<float>(y, x);
+            cv::Vec3f bg = bgFloat.at<cv::Vec3f>(y, x);
+            cv::Vec3f fg = fgFloat.at<cv::Vec3f>(y, x);
+            
+            cv::Vec3f blended = bg * (1.0f - alpha) + fg * alpha;
+            result.at<cv::Vec3b>(y, x) = cv::Vec3b(
+                cv::saturate_cast<uchar>(blended[0]),
+                cv::saturate_cast<uchar>(blended[1]),
+                cv::saturate_cast<uchar>(blended[2])
+            );
+        }
+    }
+    
+    return result;
 }
 
 cv::Mat PersonReplacementProcessor::AlignFace(const cv::Mat& face, const cv::Rect& faceRect)
@@ -679,51 +943,93 @@ cv::Mat PersonReplacementProcessor::RunFaceSwapInference(const cv::Mat& sourceFa
     }
 
     try {
-        // Prepare input tensor (example: 256x256 RGB normalized)
-        int inputSize = 256;
-        cv::Mat preprocessed;
-        cv::resize(targetFace, preprocessed, cv::Size(inputSize, inputSize));
-        cv::cvtColor(preprocessed, preprocessed, cv::COLOR_BGR2RGB);
-        preprocessed.convertTo(preprocessed, CV_32FC3, 1.0 / 255.0);
+        // simswap.onnx uses 224x224 input (standard SimSwap size)
+        int inputSize = 224;
+        
+        // Preprocess source face (the face to extract identity from)
+        cv::Mat sourcePreprocessed;
+        cv::resize(sourceFace, sourcePreprocessed, cv::Size(inputSize, inputSize), 0, 0, cv::INTER_CUBIC);
+        cv::cvtColor(sourcePreprocessed, sourcePreprocessed, cv::COLOR_BGR2RGB);
+        
+        // Normalize to [-1, 1] range (common for SimSwap models)
+        sourcePreprocessed.convertTo(sourcePreprocessed, CV_32FC3, 2.0 / 255.0, -1.0);
 
-        // Create tensor
+        // Preprocess target face (the face to swap onto)
+        cv::Mat targetPreprocessed;
+        cv::resize(targetFace, targetPreprocessed, cv::Size(inputSize, inputSize), 0, 0, cv::INTER_CUBIC);
+        cv::cvtColor(targetPreprocessed, targetPreprocessed, cv::COLOR_BGR2RGB);
+        targetPreprocessed.convertTo(targetPreprocessed, CV_32FC3, 2.0 / 255.0, -1.0);
+
+        // Create tensors for both inputs
         std::vector<int64_t> inputShape = {1, 3, inputSize, inputSize};
         size_t inputTensorSize = 1 * 3 * inputSize * inputSize;
-        std::vector<float> inputTensorValues(inputTensorSize);
+        
+        std::vector<float> sourceValues(inputTensorSize);
+        std::vector<float> targetValues(inputTensorSize);
 
-        // Convert HWC to CHW format
+        // Convert HWC to CHW format for both inputs
         for (int c = 0; c < 3; ++c) {
             for (int h = 0; h < inputSize; ++h) {
                 for (int w = 0; w < inputSize; ++w) {
-                    inputTensorValues[c * inputSize * inputSize + h * inputSize + w] =
-                        preprocessed.at<cv::Vec3f>(h, w)[c];
+                    int idx = c * inputSize * inputSize + h * inputSize + w;
+                    sourceValues[idx] = sourcePreprocessed.at<cv::Vec3f>(h, w)[c];
+                    targetValues[idx] = targetPreprocessed.at<cv::Vec3f>(h, w)[c];
                 }
             }
         }
 
-        // Create ONNX tensor
+        // Create ONNX tensors
         Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-        Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
-            memoryInfo, inputTensorValues.data(), inputTensorSize, inputShape.data(), inputShape.size());
+        
+        // crossface_simswap typically takes two inputs: source and target
+        Ort::Value sourceTensor = Ort::Value::CreateTensor<float>(
+            memoryInfo, sourceValues.data(), inputTensorSize, inputShape.data(), inputShape.size());
+        
+        Ort::Value targetTensor = Ort::Value::CreateTensor<float>(
+            memoryInfo, targetValues.data(), inputTensorSize, inputShape.data(), inputShape.size());
+
+        // Get input/output names from the model
+        std::vector<const char*> inputNames;
+        std::vector<const char*> outputNames;
+        
+        // Check how many inputs the model expects
+        size_t numInputs = m_faceSwapSession->GetInputCount();
+        Ort::AllocatorWithDefaultOptions allocator;
+        
+        for (size_t i = 0; i < numInputs; ++i) {
+            inputNames.push_back(m_faceSwapSession->GetInputNameAllocated(i, allocator).get());
+        }
+        outputNames.push_back(m_faceSwapSession->GetOutputNameAllocated(0, allocator).get());
+
+        // Prepare input tensors based on model requirements
+        std::vector<Ort::Value> inputTensors;
+        inputTensors.push_back(std::move(targetTensor));  // Target face (to be swapped)
+        if (numInputs > 1) {
+            inputTensors.push_back(std::move(sourceTensor));  // Source face (identity)
+        }
 
         // Run inference
-        const char* inputNames[] = {m_faceSwapInputName.c_str()};
-        const char* outputNames[] = {m_faceSwapOutputName.c_str()};
-        
         auto outputTensors = m_faceSwapSession->Run(
-            Ort::RunOptions{nullptr}, inputNames, &inputTensor, 1, outputNames, 1);
+            Ort::RunOptions{nullptr}, 
+            inputNames.data(), inputTensors.data(), inputTensors.size(),
+            outputNames.data(), 1);
 
         // Get output tensor
         float* outputData = outputTensors[0].GetTensorMutableData<float>();
         auto outputShape = outputTensors[0].GetTensorTypeAndShapeInfo().GetShape();
+        
+        int outputHeight = static_cast<int>(outputShape[2]);
+        int outputWidth = static_cast<int>(outputShape[3]);
 
-        // Convert back to cv::Mat
-        cv::Mat output(inputSize, inputSize, CV_32FC3);
+        // Convert back to cv::Mat (denormalize from [-1, 1] to [0, 255])
+        cv::Mat output(outputHeight, outputWidth, CV_32FC3);
         for (int c = 0; c < 3; ++c) {
-            for (int h = 0; h < inputSize; ++h) {
-                for (int w = 0; w < inputSize; ++w) {
-                    output.at<cv::Vec3f>(h, w)[c] = 
-                        outputData[c * inputSize * inputSize + h * inputSize + w];
+            for (int h = 0; h < outputHeight; ++h) {
+                for (int w = 0; w < outputWidth; ++w) {
+                    int idx = c * outputHeight * outputWidth + h * outputWidth + w;
+                    // Denormalize: from [-1, 1] to [0, 1]
+                    float value = (outputData[idx] + 1.0f) / 2.0f;
+                    output.at<cv::Vec3f>(h, w)[c] = std::max(0.0f, std::min(1.0f, value));
                 }
             }
         }
@@ -733,12 +1039,14 @@ cv::Mat PersonReplacementProcessor::RunFaceSwapInference(const cv::Mat& sourceFa
         cv::cvtColor(output, output, cv::COLOR_RGB2BGR);
         
         // Resize to original face size
-        cv::resize(output, output, sourceFace.size());
+        cv::resize(output, output, sourceFace.size(), 0, 0, cv::INTER_CUBIC);
 
+        std::cout << "✅ AI face swap successful (crossface_simswap)" << std::endl;
         return output;
     }
     catch (const std::exception& e) {
-        std::cerr << "Face swap inference failed: " << e.what() << std::endl;
+        std::cerr << "❌ Face swap inference failed: " << e.what() << std::endl;
+        std::cerr << "   Falling back to OpenCV histogram matching" << std::endl;
         return cv::Mat();
     }
 }
