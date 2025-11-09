@@ -347,6 +347,11 @@ bool PreviewWindowManager::CreateControlPanel() {
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Style: La Muse");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Style: Feathers");
     SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"Person Detector (Motion Tracker)");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"--- Person Replacement ---");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Face Swap (DeepSeek)");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Full Body Replace");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Face Enhancement (GFPGAN)");
+    SendMessageW(m_filterComboBox, CB_ADDSTRING, 0, (LPARAM)L"AI Super Resolution");
     SendMessageW(m_filterComboBox, CB_SETCURSEL, 0, 0);
 
     // Create face filter controls
@@ -485,6 +490,11 @@ void PreviewWindowManager::OnFilterSelectionChanged() {
             case 17: filterName = "style_la_muse"; break;
             case 18: filterName = "style_feathers"; break;
             case 19: filterName = "person_tracker"; break;
+            case 20: filterName = "none"; break;  // Separator "--- Person Replacement ---"
+            case 21: filterName = "person_replace_face_swap"; break;
+            case 22: filterName = "person_replace_full_body"; break;
+            case 23: filterName = "person_enhance_face"; break;
+            case 24: filterName = "person_super_resolution"; break;
             default: filterName = "none"; break;
         }
         std::cout << "[PreviewWindowManager::OnFilterSelectionChanged] Filter name: '" << filterName << "'" << std::endl;

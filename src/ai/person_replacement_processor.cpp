@@ -135,16 +135,8 @@ Frame PersonReplacementProcessor::ProcessFrame(const Frame& input)
 #else
     auto startTime = std::chrono::high_resolution_clock::now();
 
-    // Convert Frame to cv::Mat
-    cv::Mat frame(input.height, input.width, CV_8UC3, (void*)input.data, input.stride);
-    
-    // Ensure BGR format
-    cv::Mat bgrFrame;
-    if (frame.channels() == 4) {
-        cv::cvtColor(frame, bgrFrame, cv::COLOR_BGRA2BGR);
-    } else {
-        bgrFrame = frame.clone();
-    }
+    // Get cv::Mat from input frame
+    cv::Mat frame = input.data.clone();
 
     cv::Mat result;
 
@@ -153,42 +145,42 @@ Frame PersonReplacementProcessor::ProcessFrame(const Frame& input)
         switch (m_mode) {
             case FACE_SWAP:
                 if (!m_targetPersonImage.empty()) {
-                    result = ReplaceFace(bgrFrame, m_targetPersonImage);
+                    result = ReplaceFace(frame, m_targetPersonImage);
                 } else {
                     std::cerr << "No target person image set for face swap!" << std::endl;
-                    result = bgrFrame.clone();
+                    result = frame.clone();
                 }
                 break;
 
             case FULL_BODY_REPLACE:
                 if (!m_targetPersonImage.empty()) {
-                    result = ReplaceFullBody(bgrFrame, m_targetPersonImage);
+                    result = ReplaceFullBody(frame, m_targetPersonImage);
                 } else {
                     std::cerr << "No target person image set for full body replacement!" << std::endl;
-                    result = bgrFrame.clone();
+                    result = frame.clone();
                 }
                 break;
 
             case FACE_ENHANCE:
-                result = EnhanceFaceInFrame(bgrFrame);
+                result = EnhanceFaceInFrame(frame);
                 break;
 
             case SUPER_RESOLUTION:
-                result = SuperResolve(bgrFrame);
+                result = SuperResolve(frame);
                 break;
 
             case STYLE_TRANSFER:
-                result = ApplyStyleTransfer(bgrFrame);
+                result = ApplyStyleTransfer(frame);
                 break;
 
             default:
-                result = bgrFrame.clone();
+                result = frame.clone();
                 break;
         }
     }
     catch (const std::exception& e) {
         std::cerr << "Error processing frame: " << e.what() << std::endl;
-        result = bgrFrame.clone();
+        result = frame.clone();
     }
 
     // Calculate processing time
@@ -201,13 +193,8 @@ Frame PersonReplacementProcessor::ProcessFrame(const Frame& input)
     }
 
     // Convert back to Frame
-    Frame output;
-    output.width = result.cols;
-    output.height = result.rows;
-    output.stride = result.step;
-    output.format = FrameFormat::BGR24;
-    output.data = new uint8_t[result.total() * result.elemSize()];
-    std::memcpy(output.data, result.data, result.total() * result.elemSize());
+    Frame output(result);
+    output.timestamp = input.timestamp;
 
     return output;
 #endif

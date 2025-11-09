@@ -15,6 +15,7 @@
 #include "ai/anime_gan_processor.h"
 #include "ai/person_tracker_processor.h"
 #include "ai/virtual_background_processor.h"
+#include "ai/person_replacement_processor.h"
 #include "virtual_camera/virtual_camera_filter.h"
 #include "virtual_camera/virtual_camera_manager.h"
 #include "virtual_camera/camera_diagnostics.h"
@@ -278,6 +279,57 @@ void OnFilterChanged(const std::string& filterName) {
             std::cout << "[OnFilterChanged] Switched to: Person Tracker (Motion Detection)" << std::endl;
         } else {
             std::cout << "[OnFilterChanged] Failed to initialize Person Tracker, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "person_replace_face_swap") {
+        // Switch to Person Replacement (Face Swap mode)
+        auto processor = std::make_unique<PersonReplacementProcessor>();
+        processor->SetReplacementMode(PersonReplacementProcessor::FACE_SWAP);
+        processor->SetBlendStrength(0.9f);
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: Person Replacement (Face Swap)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize Person Replacement (Face Swap), falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "person_replace_full_body") {
+        // Switch to Person Replacement (Full Body mode)
+        auto processor = std::make_unique<PersonReplacementProcessor>();
+        processor->SetReplacementMode(PersonReplacementProcessor::FULL_BODY_REPLACE);
+        processor->SetBlendStrength(0.85f);
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: Person Replacement (Full Body)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize Person Replacement (Full Body), falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "person_enhance_face") {
+        // Switch to Person Replacement (Face Enhancement mode)
+        auto processor = std::make_unique<PersonReplacementProcessor>();
+        processor->SetReplacementMode(PersonReplacementProcessor::FACE_ENHANCE);
+        processor->SetEnableEnhancement(true);
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: Face Enhancement (AI)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize Face Enhancement, falling back to passthrough" << std::endl;
+            g_processor = std::make_unique<PassthroughProcessor>();
+            g_processor->Initialize();
+        }
+    } else if (filterName == "person_super_resolution") {
+        // Switch to Person Replacement (Super Resolution mode)
+        auto processor = std::make_unique<PersonReplacementProcessor>();
+        processor->SetReplacementMode(PersonReplacementProcessor::SUPER_RESOLUTION);
+        g_processor = std::move(processor);
+        if (g_processor->Initialize()) {
+            std::cout << "[OnFilterChanged] Switched to: Super Resolution (AI)" << std::endl;
+        } else {
+            std::cout << "[OnFilterChanged] Failed to initialize Super Resolution, falling back to passthrough" << std::endl;
             g_processor = std::make_unique<PassthroughProcessor>();
             g_processor->Initialize();
         }
