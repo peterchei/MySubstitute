@@ -35,6 +35,8 @@ if(USE_ONNX)
     find_path(ONNX_INCLUDE_DIR 
         NAMES onnxruntime_cxx_api.h
         PATHS
+            "D:/DevTools/onnxruntime-win-x64-1.16.3/include"
+            "D:/DevTools/onnxruntime-win-x64-gpu-1.16.3/include"
             "C:/Dev/onnxruntime/include"
             "C:/Program Files/onnxruntime/include"
             "$ENV{ONNX_ROOT}/include"
@@ -44,6 +46,8 @@ if(USE_ONNX)
     find_library(ONNX_LIBRARY 
         NAMES onnxruntime
         PATHS
+            "D:/DevTools/onnxruntime-win-x64-1.16.3/lib"
+            "D:/DevTools/onnxruntime-win-x64-gpu-1.16.3/lib"
             "C:/Dev/onnxruntime/lib"
             "C:/Program Files/onnxruntime/lib"
             "$ENV{ONNX_ROOT}/lib"
@@ -153,6 +157,20 @@ if(HAVE_ONNX)
             endforeach()
         endif()
     endif()
+endif()
+
+# Copy OpenCV DLLs to output directory on Windows
+if(HAVE_OPENCV AND WIN32)
+    set(OPENCV_BIN_DIR "D:/DevTools/opencv/build/x64/vc16/bin")
+    message(STATUS "Will copy OpenCV DLLs from: ${OPENCV_BIN_DIR}")
+    file(GLOB OPENCV_DEBUG_DLLS "${OPENCV_BIN_DIR}/*4120d.dll")
+    foreach(DLL ${OPENCV_DEBUG_DLLS})
+        add_custom_command(TARGET MySubstitute POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${DLL}" $<TARGET_FILE_DIR:MySubstitute>
+            COMMENT "Copying OpenCV DLL: ${DLL}"
+        )
+    endforeach()
 endif()
 
 # Link Windows libraries

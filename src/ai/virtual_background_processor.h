@@ -79,6 +79,8 @@ private:
     std::unique_ptr<Ort::Env> m_onnxEnv;
     std::unique_ptr<Ort::Session> m_onnxSession;
     std::unique_ptr<Ort::SessionOptions> m_sessionOptions;
+    std::string m_onnxInputName;
+    std::string m_onnxOutputName;
 #endif
     
     // Background data

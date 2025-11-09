@@ -7,12 +7,17 @@ echo.
 REM Check if Visual Studio is available
 where cl.exe >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo Visual Studio compiler not found in PATH!
-    echo Please run this from "Developer Command Prompt for VS 2022"
-    echo or run: "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat"
-    echo.
-    pause
-    exit /b 1
+    echo Visual Studio compiler not in PATH, attempting to load VS environment...
+    if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" (
+        call "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" >nul
+        echo Visual Studio environment loaded.
+    ) else (
+        echo ERROR: Visual Studio 2022 not found!
+        echo Please install Visual Studio 2022 with Desktop C++ workload.
+        echo.
+        pause
+        exit /b 1
+    )
 )
 
 REM Create build directory
@@ -20,12 +25,18 @@ echo Creating build directory...
 if not exist build (
     mkdir build
 )
-cd build
+
+REM Clear CMake cache if it exists (to avoid platform mismatch)
+if exist build\CMakeCache.txt (
+    echo Clearing CMake cache...
+    del /F /Q build\CMakeCache.txt >nul 2>&1
+)
 
 REM Run CMake configuration
 echo.
 echo Configuring with CMake...
-cmake .. -G "Visual Studio 17 2022" -A x64
+echo  - Enabling ONNX Runtime support
+cmake -B build -G "Visual Studio 17 2022" -A x64 -DUSE_ONNX=ON
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -39,7 +50,7 @@ if %ERRORLEVEL% NEQ 0 (
 REM Build the project
 echo.
 echo Building project...
-cmake --build . --config Debug --verbose
+cmake --build build --config Debug --verbose
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -54,9 +65,8 @@ echo ====================================
 echo  Build completed successfully!
 echo ====================================
 echo.
-echo Executable location: build\bin\Debug\MySubstitute.exe
+echo Executable location: build\bin\Debug\MySubstitute_d.exe
 echo.
-echo You can now run: run.bat
+echo You can now run: run.bat or run_debug.bat
 echo.
-cd ..
 pause

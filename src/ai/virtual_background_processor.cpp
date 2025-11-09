@@ -41,8 +41,10 @@ bool VirtualBackgroundProcessor::Initialize()
         // Try to load best available segmentation model
         std::vector<std::pair<std::string, std::string>> modelPaths = {
             // MediaPipe Selfie Segmentation (256x256) - BEST for real-time
+            {"models/MediaPipe-Selfie-Segmentation.onnx", "MediaPipe Selfie Segmentation"},
+            {"models/selfie_segmentation_mediapipe.onnx", "MediaPipe Selfie (ONNX)"},
             {"models/selfie_segmentation.onnx", "ONNX MediaPipe Selfie"},
-            {"models/selfie_segmentation.tflite", "TFLite MediaPipe"},
+            {"models/selfie_segmentation.tflite", "TFLite MediaPipe (not supported)"},
             
             // OpenCV DNN models
             {"models/segmentation_model_fp16.onnx", "ONNX FP16"},
@@ -704,8 +706,15 @@ bool VirtualBackgroundProcessor::LoadSegmentationModelONNX(const std::string& mo
         m_onnxSession = std::make_unique<Ort::Session>(*m_onnxEnv, modelPath.c_str(), *m_sessionOptions);
         #endif
         
+        // Store input/output names
+        Ort::AllocatorWithDefaultOptions allocator;
+        m_onnxInputName = m_onnxSession->GetInputNameAllocated(0, allocator).get();
+        m_onnxOutputName = m_onnxSession->GetOutputNameAllocated(0, allocator).get();
+        
         m_modelLoaded = true;
         std::cout << "[VirtualBackgroundProcessor] ONNX model loaded successfully" << std::endl;
+        std::cout << "[VirtualBackgroundProcessor]   Input name: " << m_onnxInputName << std::endl;
+        std::cout << "[VirtualBackgroundProcessor]   Output name: " << m_onnxOutputName << std::endl;
         std::cout << "[VirtualBackgroundProcessor] Backend: " << m_backend << std::endl;
         
         return true;
@@ -754,9 +763,9 @@ cv::Mat VirtualBackgroundProcessor::SegmentPersonWithONNX(const cv::Mat& frame)
             inputShape.data(), inputShape.size()
         );
         
-        // Run inference
-        const char* inputNames[] = {"input_1"};  // MediaPipe input name
-        const char* outputNames[] = {"output_1"};  // MediaPipe output name
+        // Run inference using stored names
+        const char* inputNames[] = {m_onnxInputName.c_str()};
+        const char* outputNames[] = {m_onnxOutputName.c_str()};
         
         auto outputTensors = m_onnxSession->Run(
             Ort::RunOptions{nullptr},
@@ -976,7 +985,7 @@ void VirtualBackgroundProcessor::SetSegmentationMethod(SegmentationMethod method
         if (!m_modelLoaded) {
             std::cout << "[VirtualBackgroundProcessor] ⚠️  ONNX model not loaded!" << std::endl;
             std::cout << "[VirtualBackgroundProcessor]    Falling back to Motion+Face detection" << std::endl;
-            std::cout << "[VirtualBackgroundProcessor] 💡 To use ONNX, run: .\\scripts\\download_segmentation_model.ps1" << std::endl;
+            std::cout << "[VirtualBackgroundProcessor] 💡 To use ONNX, run: .\\scripts\\download_mediapipe_onnx.ps1" << std::endl;
         } else {
             std::cout << "[VirtualBackgroundProcessor] ✅ ONNX (MediaPipe) ready with " << m_backend << std::endl;
         }
