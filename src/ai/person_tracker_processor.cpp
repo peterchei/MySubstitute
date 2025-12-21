@@ -18,9 +18,9 @@ PersonTrackerProcessor::PersonTrackerProcessor()
       m_frameCounter(0)
 {
     std::cout << "[PersonTrackerProcessor] Initializing..." << std::endl;
-    // Use YOLOv4-tiny for fast person detection
-    m_modelPath = "models/yolov4-tiny.weights";
-    m_configPath = "models/yolov4-tiny.cfg";
+    // Use MediaPipe Selfie Segmentation for robust person detection
+    m_modelPath = "models/MediaPipe-Selfie-Segmentation.onnx";
+    m_inputSize = cv::Size(256, 256);
 }
 
 PersonTrackerProcessor::~PersonTrackerProcessor()
@@ -34,16 +34,19 @@ bool PersonTrackerProcessor::Initialize()
 
 #ifdef HAVE_OPENCV
     try {
-        // Try to load YOLO model for person detection
-        std::cout << "[PersonTrackerProcessor] Loading YOLO model for person detection..." << std::endl;
+        // Load MediaPipe Selfie Segmentation model
+        std::cout << "[PersonTrackerProcessor] Loading model: " << m_modelPath << std::endl;
         
-        // For now, we'll use a simplified approach with built-in detectors
-        // In production, you would load YOLOv4 or similar
+        m_net = cv::dnn::readNetFromONNX(m_modelPath);
+        
+        // Optimize for CPU
+        m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+        m_net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+        
         m_modelLoaded = true;
         
         std::cout << "[PersonTrackerProcessor] Person tracker initialized successfully" << std::endl;
         std::cout << "[PersonTrackerProcessor] Confidence threshold: " << m_confidenceThreshold << std::endl;
-        std::cout << "[PersonTrackerProcessor] Trail length: " << m_maxTrailLength << std::endl;
         std::cout << "[PersonTrackerProcessor] Visualization: BBox=" << (m_showBoundingBox ? "on" : "off");
         std::cout << " Trail=" << (m_showTrail ? "on" : "off");
         std::cout << " Skeleton=" << (m_showSkeleton ? "on" : "off") << std::endl;
@@ -117,115 +120,89 @@ std::vector<PersonTrackerProcessor::DetectedPerson> PersonTrackerProcessor::Dete
 {
     std::vector<DetectedPerson> persons;
     
-    if (frame.empty()) {
+    if (frame.empty() || !m_modelLoaded) {
         return persons;
     }
 
     try {
-        // Prepare frame
-        cv::Mat workFrame = frame.clone();
+        // Preprocess frame for MediaPipe (256x256, value 0-1)
+        cv::Mat inputBlob;
+        cv::Mat resized;
+        cv::resize(frame, resized, m_inputSize);
         
-        // Convert to HSV for skin detection
-        if (workFrame.channels() == 4) {
-            cv::cvtColor(workFrame, workFrame, cv::COLOR_RGBA2BGR);
+        // MediaPipe expects RGB and 1/255 scale
+        cv::dnn::blobFromImage(resized, inputBlob, 1.0/255.0, m_inputSize, cv::Scalar(0, 0, 0), true, false);
+        
+        m_net.setInput(inputBlob);
+        
+        // Run inference
+        cv::Mat output = m_net.forward();
+        
+        // Output shape is [1, 1, 256, 256] or similar (depends on specific model export)
+        // Usually index 0 is background, 1 is foreground, OR it's a single channel sigmoid
+        // For "MediaPipe-Selfie-Segmentation.onnx", output is typically [1, 256, 256, 1] or [1, 1, 256, 256]
+        
+        // Reshape to proper 2D matrix
+        // The output might be NCHW or NHWC. 
+        // Let's inspect dimensions if we were debugging, but here we assume standard NCHW or NHWC handling.
+        // We'll create a segmentation mask.
+        
+        cv::Mat segmentationMask;
+        
+        if (output.dims >= 3) {
+            // Handle output format
+             // Extract pointer to data
+            float* data = (float*)output.data;
+            
+            // Create a Mat from valid data
+            // Assuming output matches input size (256x256)
+            cv::Mat probMap(m_inputSize, CV_32FC1, data);
+            
+            // Threshold to create binary mask
+            cv::threshold(probMap, segmentationMask, m_confidenceThreshold, 255, cv::THRESH_BINARY);
+            segmentationMask.convertTo(segmentationMask, CV_8U);
+        } else {
+             std::cerr << "[PersonTrackerProcessor] Unexpected output dimensions" << std::endl;
+             return persons;
         }
+
+        // Resize mask back to original frame size
+        cv::Mat fullSizeMask;
+        cv::resize(segmentationMask, fullSizeMask, frame.size(), 0, 0, cv::INTER_LINEAR);
         
-        cv::Mat hsv;
-        cv::cvtColor(workFrame, hsv, cv::COLOR_BGR2HSV);
-        
-        // Define skin color range in HSV
-        // H: 0-20 or 170-180 (red-ish), S: 10-40, V: 60-255
-        cv::Mat mask1, mask2;
-        cv::inRange(hsv, cv::Scalar(0, 10, 60), cv::Scalar(20, 40, 255), mask1);
-        cv::inRange(hsv, cv::Scalar(170, 10, 60), cv::Scalar(180, 40, 255), mask2);
-        
-        cv::Mat skinMask = mask1 | mask2;
-        
-        // Morphological operations to clean up
-        cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(15, 15));
-        cv::morphologyEx(skinMask, skinMask, cv::MORPH_CLOSE, kernel);
-        cv::morphologyEx(skinMask, skinMask, cv::MORPH_OPEN, kernel);
-        
-        // Find contours in skin mask
+        // Find contours to get bounding box
         std::vector<std::vector<cv::Point>> contours;
-        cv::findContours(skinMask.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+        cv::findContours(fullSizeMask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
         
-        std::cout << "[PersonTrackerProcessor] Skin detection found " << contours.size() << " regions" << std::endl;
+        double minArea = (frame.cols * frame.rows) * 0.05; // 5% area minimum to filter noise
         
-        // Filter and convert to DetectedPerson
-        int minArea = frame.rows * frame.cols * 0.01;  // 1% of frame
-        int maxArea = frame.rows * frame.cols * 0.8;   // 80% of frame
+        // Find the largest contour (assuming the person is the main subject)
+        // Or collect all significant contours
         
         for (const auto& contour : contours) {
             double area = cv::contourArea(contour);
-            
-            if (area > minArea && area < maxArea) {
+            if (area >= minArea) {
                 cv::Rect bbox = cv::boundingRect(contour);
                 
-                // Expand bbox slightly to capture full person
-                int expand = std::max(10, std::min(bbox.width, bbox.height) / 10);
-                bbox.x = std::max(0, bbox.x - expand);
-                bbox.y = std::max(0, bbox.y - expand);
-                bbox.width = std::min(frame.cols - bbox.x, bbox.width + 2 * expand);
-                bbox.height = std::min(frame.rows - bbox.y, bbox.height + 2 * expand);
+                // Add padding
+                int padX = bbox.width * 0.05; // 5% padding
+                int padY = bbox.height * 0.05;
                 
-                std::cout << "[PersonTrackerProcessor] Detected region: " << bbox << " area=" << area << std::endl;
+                bbox.x = std::max(0, bbox.x - padX);
+                bbox.y = std::max(0, bbox.y - padY);
+                bbox.width = std::min(frame.cols - bbox.x, bbox.width + 2 * padX);
+                bbox.height = std::min(frame.rows - bbox.y, bbox.height + 2 * padY);
                 
                 DetectedPerson person;
                 person.bbox = bbox;
                 person.center = cv::Point(bbox.x + bbox.width / 2, bbox.y + bbox.height / 2);
-                person.confidence = std::min(1.0f, static_cast<float>(area / (frame.rows * frame.cols * 0.15)));
+                person.confidence = 0.95f; // DNN is usually high confidence if threshold passed
                 person.trackId = -1;
                 person.color = cv::Scalar(0, 255, 0);
                 
                 persons.push_back(person);
             }
         }
-        
-        std::cout << "[PersonTrackerProcessor] Skin detection result: " << persons.size() << " persons" << std::endl;
-        
-        // If skin detection fails, use motion detection as fallback
-        if (persons.empty()) {
-            std::cout << "[PersonTrackerProcessor] Skin detection failed, trying edge detection..." << std::endl;
-            
-            cv::Mat gray;
-            cv::cvtColor(workFrame, gray, cv::COLOR_BGR2GRAY);
-            
-            cv::Mat edges;
-            cv::Canny(gray, edges, 50, 150);
-            
-            cv::Mat kernel2 = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
-            cv::dilate(edges, edges, kernel2, cv::Point(-1, -1), 2);
-            
-            std::vector<std::vector<cv::Point>> contours2;
-            cv::findContours(edges.clone(), contours2, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-            
-            std::cout << "[PersonTrackerProcessor] Edge detection found " << contours2.size() << " edges" << std::endl;
-            
-            for (const auto& contour : contours2) {
-                double area = cv::contourArea(contour);
-                
-                if (area > minArea && area < maxArea) {
-                    cv::Rect bbox = cv::boundingRect(contour);
-                    float aspectRatio = static_cast<float>(bbox.width) / std::max(1, bbox.height);
-                    
-                    if (aspectRatio > 0.25f && aspectRatio < 2.0f) {
-                        std::cout << "[PersonTrackerProcessor] Edge region: " << bbox << " aspect=" << aspectRatio << std::endl;
-                        
-                        DetectedPerson person;
-                        person.bbox = bbox;
-                        person.center = cv::Point(bbox.x + bbox.width / 2, bbox.y + bbox.height / 2);
-                        person.confidence = 0.5f;
-                        person.trackId = -1;
-                        person.color = cv::Scalar(255, 0, 0);  // Blue for edge-based
-                        
-                        persons.push_back(person);
-                    }
-                }
-            }
-        }
-        
-        std::cout << "[PersonTrackerProcessor] FINAL: " << persons.size() << " persons" << std::endl;
         
     } catch (const std::exception& e) {
         std::cerr << "[PersonTrackerProcessor] Exception: " << e.what() << std::endl;

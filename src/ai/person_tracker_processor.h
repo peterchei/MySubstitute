@@ -54,7 +54,6 @@ private:
     // Detection
     cv::dnn::Net m_net;
     std::string m_modelPath;
-    std::string m_configPath;
     bool m_modelLoaded;
     float m_confidenceThreshold;
     cv::Size m_inputSize;
