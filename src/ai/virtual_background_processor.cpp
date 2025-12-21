@@ -22,7 +22,9 @@ VirtualBackgroundProcessor::VirtualBackgroundProcessor()
       m_segmentationMethod(METHOD_ONNX_SELFIE),  // Default fallback method
       m_useGPU(true),  // Enable GPU by default
       m_useGuidedFilter(true),
-      m_backend("CPU")
+      m_backend("CPU"),
+      m_maskOffsetX(-25.0f),  // Optimized default based on user testing
+      m_maskOffsetY(0.0f)
 {
     std::cout << "[VirtualBackgroundProcessor] Initializing..." << std::endl;
 }
@@ -841,11 +843,15 @@ cv::Mat VirtualBackgroundProcessor::SegmentPersonWithONNX(const cv::Mat& frame)
             // Convert to 8-bit [0, 255]
             mask.convertTo(mask, CV_8U, 255.0);
             
-            // Apply horizontal shift correction using cv::warpAffine for sub-pixel accuracy
-            // Shift mask slightly left to compensate for observed right-side bias
+            // Apply mask offset correction using cv::warpAffine for sub-pixel accuracy
             cv::Mat shiftedMask;
-            float shiftX = -1.5f;  // Negative = shift left (sub-pixel precision)
-            cv::Mat M = (cv::Mat_<float>(2, 3) << 1, 0, shiftX, 0, 1, 0);
+            float shiftX = m_maskOffsetX;
+            float shiftY = m_maskOffsetY;
+            
+            // Affine transformation matrix for translation
+            // [ 1 0 tx ]
+            // [ 0 1 ty ]
+            cv::Mat M = (cv::Mat_<float>(2, 3) << 1, 0, shiftX, 0, 1, shiftY);
             cv::warpAffine(mask, shiftedMask, M, mask.size(), cv::INTER_LINEAR, cv::BORDER_REPLICATE);
             
             // Post-process for better quality
@@ -1214,6 +1220,18 @@ void VirtualBackgroundProcessor::SetSegmentationThreshold(float threshold)
 void VirtualBackgroundProcessor::SetBlendAlpha(float alpha)
 {
     m_blendAlpha = std::max(0.0f, std::min(1.0f, alpha));
+}
+
+void VirtualBackgroundProcessor::SetMaskOffsetX(float x)
+{
+    m_maskOffsetX = x;
+    std::cout << "[VirtualBackgroundProcessor] Mask offset X set to: " << m_maskOffsetX << std::endl;
+}
+
+void VirtualBackgroundProcessor::SetMaskOffsetY(float y)
+{
+    m_maskOffsetY = y;
+    std::cout << "[VirtualBackgroundProcessor] Mask offset Y set to: " << m_maskOffsetY << std::endl;
 }
 
 bool VirtualBackgroundProcessor::SetParameter(const std::string& name, const std::string& value)

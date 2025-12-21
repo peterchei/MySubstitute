@@ -446,6 +446,28 @@ void OnFilterChanged(const std::string& filterName) {
             vbProcessor->SetUseGPU(enableGPU);
             std::cout << "[OnFilterChanged] GPU acceleration " << (enableGPU ? "enabled" : "disabled") << std::endl;
         }
+    } else if (filterName.find("mask_offset_x:") == 0) {
+        // Update mask X offset
+        if (auto vbProcessor = dynamic_cast<VirtualBackgroundProcessor*>(g_processor.get())) {
+            std::string valueStr = filterName.substr(14); // Remove "mask_offset_x:" prefix
+            try {
+                float value = std::stof(valueStr);
+                vbProcessor->SetMaskOffsetX(value);
+            } catch (...) {
+                std::cout << "[OnFilterChanged] Invalid mask offset X value: " << valueStr << std::endl;
+            }
+        }
+    } else if (filterName.find("mask_offset_y:") == 0) {
+        // Update mask Y offset
+        if (auto vbProcessor = dynamic_cast<VirtualBackgroundProcessor*>(g_processor.get())) {
+            std::string valueStr = filterName.substr(14); // Remove "mask_offset_y:" prefix
+            try {
+                float value = std::stof(valueStr);
+                vbProcessor->SetMaskOffsetY(value);
+            } catch (...) {
+                std::cout << "[OnFilterChanged] Invalid mask offset Y value: " << valueStr << std::endl;
+            }
+        }
     } else {
         std::cout << "[OnFilterChanged] Unknown filter: " << filterName << std::endl;
     }

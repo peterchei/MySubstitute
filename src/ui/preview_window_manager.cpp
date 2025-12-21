@@ -23,6 +23,10 @@ PreviewWindowManager::PreviewWindowManager()
     , m_speechBubbleEdit(nullptr)
     , m_segmentationMethodComboBox(nullptr)
     , m_gpuAccelerationComboBox(nullptr)
+    , m_maskOffsetLabelX(nullptr)
+    , m_maskOffsetXEdit(nullptr)
+    , m_maskOffsetLabelY(nullptr)
+    , m_maskOffsetYEdit(nullptr)
     , m_hasValidCache(false)
 {
     ZeroMemory(&m_bitmapInfo, sizeof(m_bitmapInfo));
@@ -434,11 +438,49 @@ bool PreviewWindowManager::CreateControlPanel() {
         SendMessageW(m_gpuAccelerationComboBox, CB_SETCURSEL, 1, 0);  // Default to GPU
     }
 
+    // Mask Offset Controls
+    
+    // Offset X
+    m_maskOffsetLabelX = CreateWindowExW(
+        0, L"STATIC", L"Mask Offset X (pixels):",
+        WS_CHILD | WS_VISIBLE,
+        m_width + 10, 280, CONTROL_PANEL_WIDTH - 20, 20,
+        m_hwnd, nullptr, m_hInstance, nullptr
+    );
+
+    m_maskOffsetXEdit = CreateWindowExW(
+        WS_EX_CLIENTEDGE, L"EDIT", L"-25.0",
+        WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+        m_width + 10, 300, CONTROL_PANEL_WIDTH - 20, 25,
+        m_hwnd, (HMENU)1009, m_hInstance, nullptr
+    );
+
+    // Offset Y
+    m_maskOffsetLabelY = CreateWindowExW(
+        0, L"STATIC", L"Mask Offset Y (pixels):",
+        WS_CHILD | WS_VISIBLE,
+        m_width + 10, 330, CONTROL_PANEL_WIDTH - 20, 20,
+        m_hwnd, nullptr, m_hInstance, nullptr
+    );
+
+    m_maskOffsetYEdit = CreateWindowExW(
+        WS_EX_CLIENTEDGE, L"EDIT", L"0.0",
+        WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+        m_width + 10, 350, CONTROL_PANEL_WIDTH - 20, 25,
+        m_hwnd, (HMENU)1011, m_hInstance, nullptr
+    );
+
     // Initially hide face filter controls and virtual background controls
     ShowWindow(m_glassesCheckBox, SW_HIDE);
     ShowWindow(m_hatCheckBox, SW_HIDE);
     ShowWindow(m_speechBubbleCheckBox, SW_HIDE);
     ShowWindow(m_speechBubbleEdit, SW_HIDE);
+    
+    // Initially hide mask offset controls
+    ShowWindow(m_maskOffsetLabelX, SW_HIDE);
+    ShowWindow(m_maskOffsetXEdit, SW_HIDE);
+    ShowWindow(m_maskOffsetLabelY, SW_HIDE);
+    ShowWindow(m_maskOffsetYEdit, SW_HIDE);
 
     return true;
 }
@@ -465,6 +507,12 @@ void PreviewWindowManager::OnFilterSelectionChanged() {
     if (m_gpuAccelerationComboBox) {
         ShowWindow(m_gpuAccelerationComboBox, showVirtualBgControls ? SW_SHOW : SW_HIDE);
     }
+    
+    // Show/hide mask offset controls (only for Virtual Backgrounds)
+    ShowWindow(m_maskOffsetLabelX, showVirtualBgControls ? SW_SHOW : SW_HIDE);
+    ShowWindow(m_maskOffsetXEdit, showVirtualBgControls ? SW_SHOW : SW_HIDE);
+    ShowWindow(m_maskOffsetLabelY, showVirtualBgControls ? SW_SHOW : SW_HIDE);
+    ShowWindow(m_maskOffsetYEdit, showVirtualBgControls ? SW_SHOW : SW_HIDE);
 
     // Notify callback if set
     if (m_filterCallback) {
@@ -572,12 +620,35 @@ void PreviewWindowManager::OnControlPanelCommand(HWND hwnd, int id, int code) {
             }
             break;
 
-        case 1007: // GPU acceleration combo box
             if (code == CBN_SELCHANGE && m_filterCallback) {
                 int selection = SendMessageW(m_gpuAccelerationComboBox, CB_GETCURSEL, 0, 0);
                 std::string gpuCmd = (selection == 1) ? "gpu_acceleration:on" : "gpu_acceleration:off";
                 std::cout << "[PreviewWindowManager] GPU acceleration changed: " << gpuCmd << std::endl;
                 m_filterCallback(gpuCmd);
+            }
+            break;
+            
+        case 1009: // Mask Offset X Edit
+            if (code == EN_CHANGE && m_filterCallback) {
+                wchar_t text[64];
+                GetWindowTextW(m_maskOffsetXEdit, text, 64);
+                // Simple conversion to narrow string
+                char buffer[64];
+                WideCharToMultiByte(CP_UTF8, 0, text, -1, buffer, 64, nullptr, nullptr);
+                std::string cmd = "mask_offset_x:" + std::string(buffer);
+                m_filterCallback(cmd);
+            }
+            break;
+
+        case 1011: // Mask Offset Y Edit
+            if (code == EN_CHANGE && m_filterCallback) {
+                wchar_t text[64];
+                GetWindowTextW(m_maskOffsetYEdit, text, 64);
+                // Simple conversion to narrow string
+                char buffer[64];
+                WideCharToMultiByte(CP_UTF8, 0, text, -1, buffer, 64, nullptr, nullptr);
+                std::string cmd = "mask_offset_y:" + std::string(buffer);
+                m_filterCallback(cmd);
             }
             break;
     }

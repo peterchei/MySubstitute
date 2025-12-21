@@ -134,6 +134,12 @@ private:
     HWND m_segmentationMethodComboBox;
     HWND m_gpuAccelerationComboBox;
     
+    // Mask Offset controls
+    HWND m_maskOffsetLabelX;
+    HWND m_maskOffsetXEdit;
+    HWND m_maskOffsetLabelY;
+    HWND m_maskOffsetYEdit;
+    
     // Rendering
     HDC m_memDC;
     HBITMAP m_bitmap;

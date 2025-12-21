@@ -57,6 +57,10 @@ public:
 #ifdef HAVE_OPENCV
     void SetSolidColor(cv::Scalar color);   // For SOLID_COLOR mode
 #endif
+    // Mask offset configuration
+    void SetMaskOffsetX(float x);
+    void SetMaskOffsetY(float y);
+
     void SetSegmentationThreshold(float threshold);
     void SetBlendAlpha(float alpha);  // 0.0-1.0, for edge smoothing
     void SetSegmentationMethod(SegmentationMethod method);
@@ -96,6 +100,10 @@ private:
     // Performance tracking
     double m_processingTime;
     int m_frameCounter;
+    
+    // Mask calibration
+    float m_maskOffsetX;
+    float m_maskOffsetY;
     
     // Background subtraction for better segmentation
     cv::Ptr<cv::BackgroundSubtractor> m_bgSubtractor;
