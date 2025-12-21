@@ -80,6 +80,7 @@
 |-------------|--------|-------------|-------------|---------|--------|--------------|
 | **No Effects** | Passthrough | 30+ FPS | N/A | Original | <1 MB | None |
 | **Face Filters** | OpenCV Haar | 30+ FPS | N/A | Good | ~5 MB | None |
+| **Person Detector**| MediaPipe DNN | 30+ FPS | N/A | Excellent | ~2 MB | None |
 | **Virtual Background** | Segmentation | 25+ FPS | N/A | Good | ~10 MB | None |
 | **Cartoon (Simple)** | Bilateral+Edges | 30+ FPS | N/A | Good | <1 MB | None |
 | **Cartoon (Detailed)** | Bilateral+Edges | 30+ FPS | N/A | Good | <1 MB | None |
@@ -227,7 +228,8 @@ Do you have NVIDIA GPU?
 
 1. No Effects (passthrough with captions)
 2. Face Filters (glasses, hats, speech)
-3. Virtual Background
+3. Person Detector (Deep Learning)
+4. Virtual Background
 4. Cartoon (Simple)
 5. Cartoon (Detailed)
 6. Cartoon (Anime)

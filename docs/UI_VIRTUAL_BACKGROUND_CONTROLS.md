@@ -28,6 +28,17 @@ The preview window now includes dynamic controls for configuring the Virtual Bac
 
 **Runtime Change:** Yes - switches backend immediately
 
+### 3. Mask Offset Controls
+**Location:** Control panel, shown when any Virtual Background filter is selected
+
+- **Mask Offset X:** Horizontal shift (negative = left, positive = right)
+- **Mask Offset Y:** Vertical shift (negative = up, positive = down)
+
+**Default:** X: -25.0, Y: 0.0
+
+**Use Case:** Fine-tune the alignment of the background mask if it appears shifted relative to the person. This often happens due to camera alignment or model bias.
+
+
 **Fallback Behavior:** 
 - If GPU is selected but not available, automatically falls back to CPU
 - Console logs will show: `"GPU requested but no provider available, using CPU"`
@@ -131,6 +142,7 @@ vbProcessor->SetUseGPU(false);  // Disable GPU (CPU only)
 1. **src/ui/preview_window_manager.h**
    - Added `m_segmentationMethodComboBox` member
    - Added `m_gpuAccelerationComboBox` member
+   - Added `m_maskOffsetXEdit` and `m_maskOffsetYEdit` members
 
 2. **src/ui/preview_window_manager.cpp**
    - Updated constructor to initialize new combo boxes
