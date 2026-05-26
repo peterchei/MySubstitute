@@ -115,7 +115,12 @@ private:
 
     // Model inference
 #ifdef HAVE_ONNX
-    cv::Mat RunFaceSwapInference(const cv::Mat& sourceFace, const cv::Mat& targetFace);
+    // Runs SimSwap on the webcam face crop using the cached target embedding.
+    // Returns 224x224 BGR swapped face (caller resizes/pastes back).
+    cv::Mat RunFaceSwapInference(const cv::Mat& webcamFace);
+    // Extracts a 512-D ArcFace embedding from a face crop. Used by SetTargetPersonImage
+    // to cache the source identity. Returns empty on failure.
+    std::vector<float> ExtractFaceEmbedding(const cv::Mat& face);
     cv::Mat RunSuperResolutionInference(const cv::Mat& lowRes);
     cv::Mat RunFaceEnhancementInference(const cv::Mat& face);
     cv::Mat RunSegmentationInference(const cv::Mat& frame);
@@ -126,6 +131,11 @@ private:
     cv::VideoCapture m_targetPersonVideo;
     cv::Mat m_currentTargetFrame;
     bool m_useVideoTarget;
+
+    // Cached 512-D ArcFace embedding of the target identity (the face we want to wear).
+    // Populated once by SetTargetPersonImage so we don't re-detect/re-embed every frame.
+    std::vector<float> m_targetEmbedding;
+    bool m_targetEmbeddingReady = false;
 
     // Face detection
     cv::CascadeClassifier m_faceCascade;
@@ -144,8 +154,14 @@ private:
     std::unique_ptr<Ort::Session> m_faceEnhanceSession;
     std::unique_ptr<Ort::Session> m_segmentationSession;
     
-    std::string m_faceSwapInputName;
+    // SimSwap has two inputs (target image + source embedding) — store both names so we
+    // pass the introspected order to Run() instead of guessing "target"/"source_embedding".
+    std::string m_faceSwapInputName0;
+    std::string m_faceSwapInputName1;
     std::string m_faceSwapOutputName;
+    // ArcFace input/output names (introspected — don't hardcode "input"/"output").
+    std::string m_arcfaceInputName;
+    std::string m_arcfaceOutputName;
     std::string m_superResInputName;
     std::string m_superResOutputName;
     std::string m_enhanceInputName;
